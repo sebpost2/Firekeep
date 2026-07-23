@@ -61,10 +61,29 @@
 | 8 | Release packaging includes the framework and excludes personal/secret/large-binary data | `tests/package-release.tests.ps1:Get-ReleaseFiles` | unit | PASS | `Invoke-Pester tests/package-release.tests.ps1` |
 | 9 | A real release zip built from the live repo contains no leaked data | manual zip build + `Expand-Archive` + grep | integration | PASS | 0 matches, transcript in this report |
 | 10 | No personal server data remains tracked/reachable in git | `git ls-files`, `git log --all` | manual check | PASS | 0 files, 1 commit |
+| 11 | Writing a secret to disk never has a window with default/broader ACL before restriction | `tests/secret-helpers.tests.ps1:Set-RestrictedSecretFile` | unit | PASS | `Invoke-Pester tests/secret-helpers.tests.ps1` |
+| 12 | Release packaging excludes per-instance personal notes files and includes the public LEEME.md | `tests/package-release.tests.ps1` (2 new assertions) | unit | PASS | `Invoke-Pester tests/package-release.tests.ps1` |
+| 13 | A real release zip contains the corrected onboarding doc and no personal notes | manual zip build + `Expand-Archive` + `Select-String` | integration | PASS | 0 leak matches, `setup-playit.ps1` step found in shipped LEEME.md |
+
+## Follow-up work (this session, after initial delivery)
+
+### Fix: TOCTOU in `setup-playit.ps1`'s secret write
+- Flagged by a background security scan: the secret file was written, *then* its ACL restricted — a brief window where it held the folder's default/inherited permissions.
+- RED: `tests/secret-helpers.tests.ps1` written first against a not-yet-existing `_shared/scripts/secret-helpers.ps1` → `CommandNotFoundException`.
+- GREEN: implemented `Set-RestrictedSecretFile` (create empty file → restrict ACL → write content, reversing the vulnerable order) → 3/3 pass. Wired into `setup-playit.ps1` in place of the old two-line sequence.
+- Validation: `Invoke-Pester tests/secret-helpers.tests.ps1`, full suite 30/30.
+
+### Fix: `LEEME.md` not usable by a genuine first-time user
+- User-reported gap after manual review: LEEME.md documented the personal `Cave Horror Project` server as if it shipped publicly (it doesn't — `package-release.ps1` already excluded it), the playit.gg "first time" section didn't match actual script behavior (never mentioned `setup-playit.ps1`, which `start-with-tunnel.ps1` actually requires), and there was no zero-to-server walkthrough or explanation of where to get a `.mrpack` file.
+- Moved the personal section into `Minecraft/servers/Cave Horror Project/NOTAS.md` (already outside git tracking and the release allow-list — no code change needed to keep it private, just relocated the content).
+- Added two regression assertions to `tests/package-release.tests.ps1` (excludes per-instance `NOTAS.md`, includes `LEEME.md`) — both passed immediately against the existing allow-list logic, confirming no production bug there; the assertions exist to lock the guarantee in for future changes.
+- Rewrote `LEEME.md`: added a Requirements section, a "primera vez" zero-to-server walkthrough, a Modrinth `.mrpack` mini-guide, and corrected the playit.gg first-run steps to name `setup-playit.ps1` explicitly.
+- Validation: full suite 32/32; real release zip rebuilt and inspected — confirmed no `NOTAS`/`Cave Horror` leak and confirmed the corrected `setup-playit.ps1` wording is present in the shipped `LEEME.md`.
 
 ## Coverage and Known Gaps
 
-- Full Pester suite: **27/27 passing** (`Invoke-Pester .\tests\`), up from the pre-existing 20.
+- Full Pester suite: **32/32 passing** (`Invoke-Pester .\tests\`), up from the pre-existing 20.
 - Not covered by automated tests: `Start.ps1`'s new menu branch (thin interactive wrapper — validated by parse-check only, not a scripted interactive run) and CurseForge's manual install path (unchanged, out of scope per the approved plan).
-- `Minecraft/servers/_e2e-test/` (debris from the live E2E run, pre-dating the encoding fix) is left on disk — gitignored, harmless, deletion declined during this session; safe to delete manually at any time.
+- `Minecraft/servers/_e2e-test/` (debris from the live E2E run) has been deleted by the user.
+- The rewritten `LEEME.md` has not been tested against an actual outside person with zero context — only reviewed for internal consistency and correctness against script behavior.
 - Background security scan flagged a pre-existing TOCTOU issue in `_shared/scripts/setup-playit.ps1` (secret file briefly world-readable before `icacls` restricts it) — out of scope for this plan, not addressed here.
