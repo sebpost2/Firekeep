@@ -77,7 +77,22 @@ elseif (-not (Test-Path $MrpackPath)) {
 
 $mcVersion = Get-MinecraftVersionFromMrpack -MrpackPath $localMrpack
 $javaVersion = Get-JavaVersionForMinecraft -McVersion $mcVersion
-Write-Host "Modpack para Minecraft $mcVersion -> Java $javaVersion."
+$loader = Get-ModpackLoader -MrpackPath $localMrpack
+Write-Host "Modpack para Minecraft $mcVersion ($loader) -> Java $javaVersion."
+
+if ($loader -ne "fabric") {
+    Remove-Item -Recurse -Force $dest
+    Write-Host ""
+    Write-Host "==================================================================="
+    Write-Host " Este modpack usa $loader, que todavia no se puede instalar solo."
+    Write-Host " (La instalacion automatica por ahora solo funciona con Fabric.)"
+    Write-Host "==================================================================="
+    Write-Host ""
+    Write-Host "Segui la 'Opcion manual' del LEEME.md: crea el server sin -MrpackPath"
+    Write-Host "  (.\Minecraft\scripts\new-server.ps1 -Name ""$Name"") y copiale los"
+    Write-Host "'Server Files' del modpack (CurseForge, o el .mrpack exportado a mano)."
+    exit 1
+}
 
 Write-Host ""
 Write-Host "Instalando el modpack (mods, server jar, config)..."
