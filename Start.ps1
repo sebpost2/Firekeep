@@ -3,6 +3,9 @@
 # un start-with-tunnel.ps1, asi que agregar un juego nuevo no requiere tocar este script.
 
 $root = $PSScriptRoot
+. (Join-Path $root "_shared\scripts\console-ui.ps1")
+
+Write-UiBanner -Title "GAME SERVERS" -Subtitle "Tunel a tu PC para que tus amigos jueguen con vos"
 
 $instances = @(
     Get-ChildItem -Path $root -Directory |
@@ -27,25 +30,23 @@ $instances = @(
 $newServerChoice = $instances.Count
 
 if ($instances.Count -eq 0) {
-    Write-Host ""
-    Write-Host "No hay ningun server creado todavia."
+    Write-UiHint "No hay ningun server creado todavia. Empeza por la opcion de abajo."
 }
 
-Write-Host ""
-Write-Host "===================== SERVERS DISPONIBLES ====================="
+Write-UiSection "Servers disponibles"
 for ($i = 0; $i -lt $instances.Count; $i++) {
-    Write-Host "  [$i] $($instances[$i].Game) - $($instances[$i].Name)"
+    Write-UiMenuItem -Index $i -Label "$($instances[$i].Game) - $($instances[$i].Name)"
 }
-Write-Host "  [$newServerChoice] Crear un server nuevo (Minecraft, desde un modpack de Modrinth)"
-Write-Host "=============================================================="
+Write-UiMenuItem -Index $newServerChoice -Label "Crear un server nuevo (modpack de Modrinth)" -Action
+Write-Host ("  " + ("-" * 62)) -ForegroundColor DarkGray
 Write-Host ""
-Write-Host "Cuando arranque, te va a mostrar (y copiar al portapapeles) la"
-Write-Host "direccion para pasarle a tus amigos."
+Write-UiHint "Cuando arranque, te va a mostrar (y copiar al portapapeles) la"
+Write-UiHint "direccion para pasarle a tus amigos."
 Write-Host ""
 
 $choice = Read-Host "Elegi un numero y apreta Enter"
 if ($choice -notmatch '^\d+$' -or [int]$choice -gt $newServerChoice) {
-    Write-Host "Opcion invalida."
+    Write-Host "  Opcion invalida." -ForegroundColor Red
     exit 1
 }
 
@@ -66,12 +67,11 @@ $selected = $instances[[int]$choice]
 $launcher = Join-Path $selected.Path "start-with-tunnel.ps1"
 
 if (-not (Test-Path $launcher)) {
-    Write-Host "No encontre start-with-tunnel.ps1 en $($selected.Path)"
+    Write-Host "  No encontre start-with-tunnel.ps1 en $($selected.Path)" -ForegroundColor Red
     exit 1
 }
 
-Write-Host ""
-Write-Host "Arrancando $($selected.Game) - $($selected.Name)..."
-Write-Host "(para apagarlo: doble click en 'Detener Server.bat', o escribi 'stop' aca)"
+Write-UiSuccess "Arrancando $($selected.Game) - $($selected.Name)..."
+Write-UiHint "(para apagarlo: doble click en 'Detener Server.bat', o escribi 'stop' aca)"
 Write-Host ""
 & $launcher

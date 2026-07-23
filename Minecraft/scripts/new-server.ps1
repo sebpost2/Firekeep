@@ -17,6 +17,7 @@ $mcRoot = Split-Path -Parent $PSScriptRoot
 $gsRoot = Split-Path -Parent $mcRoot
 $template = Join-Path $mcRoot "servers\_template"
 $dest = Join-Path $mcRoot "servers\$Name"
+. (Join-Path $gsRoot "_shared\scripts\console-ui.ps1")
 
 if (Test-Path $dest) {
     Write-Error "Ya existe un server llamado '$Name' en $dest"
@@ -41,8 +42,8 @@ $propsPath = Join-Path $dest "server.properties"
 ) | Set-Content -Path $propsPath -Encoding ascii
 
 Write-Host ""
-Write-Host "Server '$Name' creado en $dest"
-Write-Host "RCON quedo activado (para el apagado limpio con 'Detener Server')."
+Write-UiSuccess "Server '$Name' creado en $dest"
+Write-UiHint "RCON quedo activado (para el apagado limpio con 'Detener Server')."
 
 if (-not $MrpackPath) {
     Write-Host ""
@@ -82,11 +83,8 @@ Write-Host "Modpack para Minecraft $mcVersion ($loader) -> Java $javaVersion."
 
 if ($loader -ne "fabric") {
     Remove-Item -Recurse -Force $dest
-    Write-Host ""
-    Write-Host "==================================================================="
-    Write-Host " Este modpack usa $loader, que todavia no se puede instalar solo."
-    Write-Host " (La instalacion automatica por ahora solo funciona con Fabric.)"
-    Write-Host "==================================================================="
+    Write-UiWarn "Este modpack usa $loader, que todavia no se puede instalar solo."
+    Write-UiHint "(La instalacion automatica por ahora solo funciona con Fabric.)"
     Write-Host ""
     Write-Host "Segui la 'Opcion manual' del LEEME.md: crea el server sin -MrpackPath"
     Write-Host "  (.\Minecraft\scripts\new-server.ps1 -Name ""$Name"") y copiale los"
@@ -122,5 +120,5 @@ if ($eulaAns -ne "acepto") {
 Set-Content -Path (Join-Path $dest "eula.txt") -Value "eula=true" -Encoding ascii
 
 Write-Host ""
-Write-Host "Listo! '$Name' quedo instalado y configurado."
-Write-Host "Arrancalo desde el menu (Start.bat) o con start-with-tunnel.ps1 en esa carpeta."
+Write-UiSuccess "Listo! '$Name' quedo instalado y configurado."
+Write-UiHint "Arrancalo desde el menu (Start.bat) o con start-with-tunnel.ps1 en esa carpeta."
