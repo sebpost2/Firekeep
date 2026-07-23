@@ -87,15 +87,20 @@ Describe "Set-RunConfigJavaAndRam" {
     $configPath = Join-Path $env:TEMP ("run.config-" + [Guid]::NewGuid().ToString("N") + ".ps1")
 
     BeforeEach {
-        @(
+        $text = @(
             '# Configuracion de esta instancia de server.'
             '$JavaVersion = 21'
             ''
             '$MinRam = "2G"'
             '$MaxRam = "6G"'
             ''
+            '# Comentario con acentos: si el modpack no trae start.bat, poné esto en false.'
             '$UseModpackLauncher = $true'
-        ) -join "`r`n" | Set-Content -Path $configPath -Encoding utf8
+        ) -join "`r`n"
+        # Escribe UTF-8 SIN BOM a proposito: asi esta el run.config.ps1 real de
+        # _template, y Get-Content sin -Encoding lo interpreta mal (ANSI) si no
+        # se especifica explicitamente.
+        [System.IO.File]::WriteAllText($configPath, $text, (New-Object System.Text.UTF8Encoding($false)))
     }
 
     It "updates JavaVersion and MaxRam while leaving other lines untouched" {
@@ -109,6 +114,12 @@ Describe "Set-RunConfigJavaAndRam" {
     It "leaves MinRam untouched" {
         Set-RunConfigJavaAndRam -Path $configPath -JavaVersion 17 -MaxRam "8G"
         Get-Content -Path $configPath -Raw | Should Match '\$MinRam = "2G"'
+    }
+
+    It "does not mangle accented characters in untouched comments" {
+        Set-RunConfigJavaAndRam -Path $configPath -JavaVersion 17 -MaxRam "8G"
+        $content = Get-Content -Path $configPath -Raw -Encoding UTF8
+        $content | Should Match 'poné esto en false'
     }
 
     Remove-Item -Force $configPath -ErrorAction SilentlyContinue
