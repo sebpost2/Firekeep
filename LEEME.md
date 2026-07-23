@@ -42,8 +42,11 @@ Los modpacks de [Modrinth](https://modrinth.com) traen este formato:
 4. Guardalo en cualquier carpeta (ej. Descargas) y usá esa ruta en el paso 3
    de arriba — o copiá el link de descarga directa y pegalo en vez de la ruta.
 
-> Los modpacks de **CurseForge** no tienen `.mrpack` — para esos, seguí la
-> "Opción manual" en la sección "Agregar OTRO modpack" más abajo.
+> **Importante:** la instalación automática hoy solo funciona con modpacks de
+> **Fabric**. Si el `.mrpack` es de Forge, Quilt o NeoForge, el script te va a
+> avisar y te va a mandar a la "Opción manual" de abajo (todavía no se puede
+> instalar solo). Los modpacks de **CurseForge** tampoco tienen `.mrpack` —
+> para esos también seguí la "Opción manual".
 
 ---
 
@@ -137,6 +140,34 @@ Opción manual (para modpacks de CurseForge, que no tienen `.mrpack`):
 3. Editá `run.config.ps1` (versión de Java) y `user_jvm_args.txt` (memoria).
 4. Poné `eula=true` en `eula.txt`.
 5. Arrancalo desde el menú (`Start.bat`).
+
+---
+
+## ❓ Problemas comunes (primera vez)
+
+**Windows Defender pregunta "¿Permitir acceso?" para Java o playit.exe.**
+Es normal — el server necesita abrir un puerto de red. Apretá **"Permitir
+acceso"** (Allow access). Si lo cerrás o le decís que no, el server anda pero
+tus amigos de otra red no van a poder conectarse.
+
+**El antivirus borra o bloquea `playit.exe` o `mrpack.exe`.**
+Son herramientas de terceros sin firma digital, así que algún antivirus
+puede marcarlas como sospechosas por las dudas. Si un server no arranca o
+`new-server.ps1` dice que no encuentra `mrpack.exe`/`playit.exe`, revisá la
+cuarentena/historial de tu antivirus y restauralos (son seguros: son las
+mismas herramientas oficiales de Modrinth y playit.gg).
+
+**El server no arranca / se cierra solo con un error de memoria.**
+Puede ser que el modpack pida más RAM de la que tiene tu PC. Fijate cuánta
+memoria RAM total tenés (clic derecho en la barra de tareas → Administrador
+de tareas → Rendimiento) y no le asignes al server más de lo que sobra
+después de dejarle algo a Windows (ej. si tenés 16 GB, no le des más de
+10-12 GB al server).
+
+**La primera vez tarda mucho / parece colgado.**
+La primera vez que arrancás, se descarga Java (si hace falta) y, si creaste
+el server con un `.mrpack`, también los mods y el server jar. Puede tardar
+varios minutos según tu internet — dejalo correr.
 
 ---
 
