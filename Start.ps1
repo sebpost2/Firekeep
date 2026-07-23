@@ -6,6 +6,7 @@ $root = $PSScriptRoot
 . (Join-Path $root "_shared\scripts\console-ui.ps1")
 
 Write-UiBanner -Title "GAME SERVERS" -Subtitle "Tunel a tu PC para que tus amigos jueguen con vos"
+Write-UiHint "Guia completa (paso a paso, con soluciones a problemas comunes): LEEME.md"
 
 $instances = @(
     Get-ChildItem -Path $root -Directory |
