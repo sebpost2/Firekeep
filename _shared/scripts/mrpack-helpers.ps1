@@ -74,8 +74,12 @@ function Set-RunConfigJavaAndRam {
         [Parameter(Mandatory = $true)][string]$MaxRam
     )
 
-    $content = Get-Content -Path $Path -Raw
+    # Leemos y escribimos UTF-8 sin BOM explicitamente: Get-Content/Set-Content
+    # sin -Encoding asumen ANSI en archivos sin BOM (como este), lo que rompe
+    # los acentos de los comentarios (ver run.config.ps1 de _template).
+    $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+    $content = [System.IO.File]::ReadAllText($Path, $utf8NoBom)
     $content = $content -replace '\$JavaVersion\s*=\s*\d+', "`$JavaVersion = $JavaVersion"
     $content = $content -replace '\$MaxRam\s*=\s*"[^"]*"', "`$MaxRam = `"$MaxRam`""
-    Set-Content -Path $Path -Value $content -NoNewline -Encoding utf8
+    [System.IO.File]::WriteAllText($Path, $content, $utf8NoBom)
 }
