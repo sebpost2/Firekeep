@@ -65,6 +65,51 @@ function Get-MinecraftVersionFromMrpack {
     return $json.dependencies.minecraft
 }
 
+# Detecta el mod loader del modpack (fabric/forge/quilt/neoforge) leyendo las
+# mismas dependencies de modrinth.index.json. mrpack.exe (mrpack-install) solo
+# instala el server jar automaticamente para Fabric hoy: para Forge falla con
+# "forge provider not implemented" y pide instalar el server a mano. Con esto
+# new-server.ps1 puede avisar ANTES de intentarlo, en vez de dejar al usuario
+# con un error crudo de Go a mitad de la instalacion.
+function Get-ModpackLoader {
+    param(
+        [Parameter(Mandatory = $true)][string]$MrpackPath
+    )
+
+    if (-not (Test-Path $MrpackPath)) {
+        throw "No encontre el archivo .mrpack en '$MrpackPath'."
+    }
+
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $zip = [System.IO.Compression.ZipFile]::OpenRead((Resolve-Path $MrpackPath))
+    try {
+        $entry = $zip.GetEntry("modrinth.index.json")
+        if (-not $entry) {
+            throw "El .mrpack '$MrpackPath' no tiene modrinth.index.json."
+        }
+        $reader = New-Object System.IO.StreamReader($entry.Open())
+        try {
+            $json = $reader.ReadToEnd() | ConvertFrom-Json
+        }
+        finally {
+            $reader.Dispose()
+        }
+    }
+    finally {
+        $zip.Dispose()
+    }
+
+    $deps = $json.dependencies
+    if (-not $deps) {
+        throw "modrinth.index.json en '$MrpackPath' no tiene dependencies."
+    }
+    if ($deps.'fabric-loader') { return "fabric" }
+    if ($deps.forge) { return "forge" }
+    if ($deps.'quilt-loader') { return "quilt" }
+    if ($deps.neoforge) { return "neoforge" }
+    throw "No pude detectar el mod loader del modpack en '$MrpackPath'."
+}
+
 # Actualiza JavaVersion y MaxRam en un run.config.ps1 existente sin tocar el
 # resto del archivo (comentarios, MinRam, UseModpackLauncher, etc.).
 function Set-RunConfigJavaAndRam {
