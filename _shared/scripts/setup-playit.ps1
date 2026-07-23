@@ -74,11 +74,11 @@ for ($i = 0; $i -lt 20 -and -not $secret; $i++) {
 }
 if (-not $secret) { Write-Error "No pude obtener el secret. Volve a correr el script."; exit 1 }
 
-# 4) Guardar el secret (tratalo como una contrasena).
-Set-Content -Path $secretFile -Value $secret -NoNewline -Encoding ascii
-# Restringir el archivo a solo este usuario (evita que otras cuentas de la
-# misma laptop puedan leer el secret y controlar el tunel).
-icacls $secretFile /inheritance:r /grant:r "${env:USERDOMAIN}\${env:USERNAME}:(R,W)" | Out-Null
+# 4) Guardar el secret (tratalo como una contrasena). Restringe el acceso al
+# usuario actual ANTES de escribir el contenido, para que nunca quede ni un
+# instante en disco con los permisos por defecto (heredados) de la carpeta.
+. (Join-Path $PSScriptRoot "secret-helpers.ps1")
+Set-RestrictedSecretFile -Path $secretFile -Content $secret
 Write-Host ""
 Write-Host "OK! playit.gg quedo vinculado. Secret guardado en:"
 Write-Host "   $secretFile"
