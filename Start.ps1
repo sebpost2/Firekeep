@@ -24,14 +24,11 @@ $instances = @(
         }
 )
 
+$newServerChoice = $instances.Count
+
 if ($instances.Count -eq 0) {
     Write-Host ""
     Write-Host "No hay ningun server creado todavia."
-    Write-Host ""
-    Write-Host "Para crear uno de Minecraft:"
-    Write-Host "  .\Minecraft\scripts\new-server.ps1 -Name ""NombreDelModpack"""
-    Write-Host ""
-    exit 0
 }
 
 Write-Host ""
@@ -39,6 +36,7 @@ Write-Host "===================== SERVERS DISPONIBLES ====================="
 for ($i = 0; $i -lt $instances.Count; $i++) {
     Write-Host "  [$i] $($instances[$i].Game) - $($instances[$i].Name)"
 }
+Write-Host "  [$newServerChoice] Crear un server nuevo (Minecraft, desde un modpack de Modrinth)"
 Write-Host "=============================================================="
 Write-Host ""
 Write-Host "Cuando arranque, te va a mostrar (y copiar al portapapeles) la"
@@ -46,9 +44,22 @@ Write-Host "direccion para pasarle a tus amigos."
 Write-Host ""
 
 $choice = Read-Host "Elegi un numero y apreta Enter"
-if ($choice -notmatch '^\d+$' -or [int]$choice -ge $instances.Count) {
+if ($choice -notmatch '^\d+$' -or [int]$choice -gt $newServerChoice) {
     Write-Host "Opcion invalida."
     exit 1
+}
+
+if ([int]$choice -eq $newServerChoice) {
+    $name = Read-Host "Nombre para el nuevo server (ej. MiModpack)"
+    $mrpack = Read-Host "Ruta o URL del archivo .mrpack (Enter para instalarlo a mano despues)"
+    $newServerScript = Join-Path $root "Minecraft\scripts\new-server.ps1"
+    if ([string]::IsNullOrWhiteSpace($mrpack)) {
+        & $newServerScript -Name $name
+    }
+    else {
+        & $newServerScript -Name $name -MrpackPath $mrpack
+    }
+    exit 0
 }
 
 $selected = $instances[[int]$choice]
