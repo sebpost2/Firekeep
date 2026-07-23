@@ -13,6 +13,7 @@ Describe "Get-ReleaseFiles" {
         "Minecraft\servers\_template\run.config.ps1",
         "Minecraft\servers\Cave Horror Project\ops.json",
         "Minecraft\servers\Cave Horror Project\world\level.dat",
+        "Minecraft\servers\Cave Horror Project\NOTAS.md",
         "Minecraft\tools\java\21\bin\java.exe",
         "tests\checksum-helpers.tests.ps1"
     )
@@ -36,6 +37,14 @@ Describe "Get-ReleaseFiles" {
     It "excludes the personal Cave Horror Project server instance" {
         ($result -contains (Join-Path $fixtureRoot "Minecraft\servers\Cave Horror Project\ops.json")) | Should Be $false
         ($result -contains (Join-Path $fixtureRoot "Minecraft\servers\Cave Horror Project\world\level.dat")) | Should Be $false
+    }
+
+    It "excludes personal per-instance notes (e.g. NOTAS.md living inside an installed server folder)" {
+        ($result -contains (Join-Path $fixtureRoot "Minecraft\servers\Cave Horror Project\NOTAS.md")) | Should Be $false
+    }
+
+    It "includes the public LEEME.md" {
+        ($result -contains (Join-Path $fixtureRoot "LEEME.md")) | Should Be $true
     }
 
     It "excludes the playit secret and cached address" {
