@@ -82,6 +82,50 @@ Describe "Get-MinecraftVersionFromMrpack" {
     Remove-Item -Force $validPack, $noIndexPack, $badJsonPack -ErrorAction SilentlyContinue
 }
 
+Describe "Get-ModpackLoader" {
+
+    function New-TestMrpackWithDeps([string]$Path, [string]$DepsJson) {
+        if (Test-Path $Path) { Remove-Item -Force $Path }
+        $workDir = Join-Path $env:TEMP ("mrpack-loader-fixture-" + [Guid]::NewGuid().ToString("N"))
+        New-Item -ItemType Directory -Force -Path $workDir | Out-Null
+        Set-Content -Path (Join-Path $workDir "modrinth.index.json") -Value "{`"dependencies`":$DepsJson}" -Encoding utf8
+        $zipPath = "$Path.zip"
+        Compress-Archive -Path (Join-Path $workDir "*") -DestinationPath $zipPath -Force
+        Move-Item -Path $zipPath -Destination $Path -Force
+        Remove-Item -Recurse -Force $workDir
+    }
+
+    $fabricPack = Join-Path $env:TEMP ("fabric-" + [Guid]::NewGuid().ToString("N") + ".mrpack")
+    New-TestMrpackWithDeps -Path $fabricPack -DepsJson '{"minecraft":"1.20.1","fabric-loader":"0.15.0"}'
+
+    $forgePack = Join-Path $env:TEMP ("forge-" + [Guid]::NewGuid().ToString("N") + ".mrpack")
+    New-TestMrpackWithDeps -Path $forgePack -DepsJson '{"minecraft":"1.19.2","forge":"43.5.1"}'
+
+    $quiltPack = Join-Path $env:TEMP ("quilt-" + [Guid]::NewGuid().ToString("N") + ".mrpack")
+    New-TestMrpackWithDeps -Path $quiltPack -DepsJson '{"minecraft":"1.20.1","quilt-loader":"0.20.0"}'
+
+    $neoforgePack = Join-Path $env:TEMP ("neoforge-" + [Guid]::NewGuid().ToString("N") + ".mrpack")
+    New-TestMrpackWithDeps -Path $neoforgePack -DepsJson '{"minecraft":"1.20.4","neoforge":"20.4.100"}'
+
+    It "detects fabric" {
+        Get-ModpackLoader -MrpackPath $fabricPack | Should Be "fabric"
+    }
+
+    It "detects forge" {
+        Get-ModpackLoader -MrpackPath $forgePack | Should Be "forge"
+    }
+
+    It "detects quilt" {
+        Get-ModpackLoader -MrpackPath $quiltPack | Should Be "quilt"
+    }
+
+    It "detects neoforge" {
+        Get-ModpackLoader -MrpackPath $neoforgePack | Should Be "neoforge"
+    }
+
+    Remove-Item -Force $fabricPack, $forgePack, $quiltPack, $neoforgePack -ErrorAction SilentlyContinue
+}
+
 Describe "Set-RunConfigJavaAndRam" {
 
     $configPath = Join-Path $env:TEMP ("run.config-" + [Guid]::NewGuid().ToString("N") + ".ps1")
@@ -121,6 +165,4 @@ Describe "Set-RunConfigJavaAndRam" {
         $content = Get-Content -Path $configPath -Raw -Encoding UTF8
         $content | Should Match 'poné esto en false'
     }
-
-    Remove-Item -Force $configPath -ErrorAction SilentlyContinue
 }
