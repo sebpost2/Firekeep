@@ -4,29 +4,12 @@
 
 $root = $PSScriptRoot
 . (Join-Path $root "_shared\scripts\console-ui.ps1")
+. (Join-Path $root "_shared\scripts\gui-helpers.ps1")
 
 Write-UiBanner -Title "GAME SERVERS" -Subtitle "A tunnel to your PC so your friends can play with you"
 Write-UiHint "Full guide (step by step, with fixes for common problems): README.md"
 
-$instances = @(
-    Get-ChildItem -Path $root -Directory |
-        Where-Object { $_.Name -ne "_shared" } |
-        ForEach-Object {
-            $game = $_.Name
-            $serversDir = Join-Path $_.FullName "servers"
-            if (Test-Path $serversDir) {
-                Get-ChildItem -Path $serversDir -Directory |
-                    Where-Object { $_.Name -ne "_template" } |
-                    ForEach-Object {
-                        [PSCustomObject]@{
-                            Game = $game
-                            Name = $_.Name
-                            Path = $_.FullName
-                        }
-                    }
-            }
-        }
-)
+$instances = @(Get-ServerInstances -Root $root)
 
 $newServerChoice = $instances.Count
 
