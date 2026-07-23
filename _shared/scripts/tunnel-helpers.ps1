@@ -1,16 +1,16 @@
-# Logica compartida para elegir el tunel de Minecraft correcto entre los que
-# devuelve la API de playit.gg (rundata). Se carga con dot-source desde los
-# scripts que consultan el tunel (start-with-tunnel.ps1, show-address.ps1).
+# Shared logic for picking the right Minecraft tunnel among the ones returned
+# by the playit.gg API (rundata). Loaded via dot-source from the scripts that
+# query the tunnel (start-with-tunnel.ps1, show-address.ps1).
 
-# Elige el tunel "minecraft-java" que apunta al puerto local pedido. Si ninguno
-# coincide en puerto (ej. cuenta vieja sin ese campo), cae al primer tunel
-# minecraft-java que encuentre. Devuelve $null si no hay ninguno.
+# Picks the "minecraft-java" tunnel that points to the requested local port.
+# If none match on port (e.g. an old account without that field), falls back
+# to the first minecraft-java tunnel it finds. Returns $null if there's none.
 function Select-MinecraftTunnel {
     param(
         [Parameter(Mandatory = $true)] $Tunnels,
         [int]$LocalPort = 25565
     )
-    $porPuerto = @($Tunnels | Where-Object { $_.tunnel_type -eq "minecraft-java" -and $_.local_port -eq $LocalPort })
-    if ($porPuerto.Count -gt 0) { return $porPuerto[0] }
+    $byPort = @($Tunnels | Where-Object { $_.tunnel_type -eq "minecraft-java" -and $_.local_port -eq $LocalPort })
+    if ($byPort.Count -gt 0) { return $byPort[0] }
     return $Tunnels | Where-Object { $_.tunnel_type -eq "minecraft-java" } | Select-Object -First 1
 }

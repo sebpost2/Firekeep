@@ -4,7 +4,7 @@ Describe "Get-ReleaseFiles" {
 
     $fixtureRoot = Join-Path $env:TEMP ("release-fixture-" + [Guid]::NewGuid().ToString("N"))
     $paths = @(
-        "Start.bat", "Start.ps1", "Detener Server.bat", "LEEME.md", ".gitignore",
+        "Start.bat", "Start.ps1", "Stop Server.bat", "README.md", ".gitignore",
         "_shared\scripts\rcon.ps1",
         "_shared\tools\mrpack.exe",
         "_shared\tools\playit\secret.key",
@@ -13,7 +13,7 @@ Describe "Get-ReleaseFiles" {
         "Minecraft\servers\_template\run.config.ps1",
         "Minecraft\servers\Cave Horror Project\ops.json",
         "Minecraft\servers\Cave Horror Project\world\level.dat",
-        "Minecraft\servers\Cave Horror Project\NOTAS.md",
+        "Minecraft\servers\Cave Horror Project\NOTES.md",
         "Minecraft\tools\java\21\bin\java.exe",
         "tests\checksum-helpers.tests.ps1"
     )
@@ -39,12 +39,12 @@ Describe "Get-ReleaseFiles" {
         ($result -contains (Join-Path $fixtureRoot "Minecraft\servers\Cave Horror Project\world\level.dat")) | Should Be $false
     }
 
-    It "excludes personal per-instance notes (e.g. NOTAS.md living inside an installed server folder)" {
-        ($result -contains (Join-Path $fixtureRoot "Minecraft\servers\Cave Horror Project\NOTAS.md")) | Should Be $false
+    It "excludes personal per-instance notes (e.g. NOTES.md living inside an installed server folder)" {
+        ($result -contains (Join-Path $fixtureRoot "Minecraft\servers\Cave Horror Project\NOTES.md")) | Should Be $false
     }
 
-    It "includes the public LEEME.md" {
-        ($result -contains (Join-Path $fixtureRoot "LEEME.md")) | Should Be $true
+    It "includes the public README.md" {
+        ($result -contains (Join-Path $fixtureRoot "README.md")) | Should Be $true
     }
 
     It "excludes the playit secret and cached address" {

@@ -1,21 +1,21 @@
-# Arma el zip para publicar: copia solo el framework (menu, scripts, _template,
-# tests, docs) y deja afuera cualquier server instalado (mundos, mods, ops/whitelist,
-# secretos de playit, runtimes de Java portables). Uso:
+# Builds the zip to publish: copies only the framework (menu, scripts,
+# _template, tests, docs) and leaves out any installed server (worlds, mods,
+# ops/whitelist, playit secrets, portable Java runtimes). Usage:
 #   .\package-release.ps1
-#   .\package-release.ps1 -OutputZip "C:\ruta\GameServers-release.zip"
+#   .\package-release.ps1 -OutputZip "C:\path\GameServers-release.zip"
 
 param(
     [string]$Root = (Split-Path -Parent (Split-Path -Parent $PSScriptRoot)),
     [string]$OutputZip,
-    # Uso interno de los tests: carga las funciones sin armar ningun zip.
+    # Used internally by tests: loads the functions without building any zip.
     [switch]$TestOnlyLoadFunctions
 )
 
 if (-not $OutputZip) { $OutputZip = Join-Path $Root "GameServers-release.zip" }
 
-# Lista explicita de lo que SI va en el release publico. Todo lo demas
-# (servers instalados, secretos, runtimes de Java) queda afuera por default,
-# asi agregar un archivo nuevo al repo no lo publica sin querer.
+# Explicit allow-list of what DOES go in the public release. Everything else
+# (installed servers, secrets, Java runtimes) stays out by default, so adding
+# a new file to the repo never publishes it by accident.
 function Get-ReleaseFiles {
     param(
         [Parameter(Mandatory = $true)][string]$Root
@@ -23,8 +23,8 @@ function Get-ReleaseFiles {
 
     $include = @(
         "Start.bat", "Start.ps1",
-        "Detener Server.bat", "Administrar Mapas.bat", "Mi Direccion.bat", "Ver IP Tailscale.bat",
-        "LEEME.md", "CONEXION - Opciones y Plan.md", ".gitignore",
+        "Stop Server.bat", "Manage Maps.bat", "My Address.bat", "View Tailscale IP.bat",
+        "README.md", ".gitignore",
         "_shared\scripts",
         "_shared\tools\mrpack.exe",
         "_shared\tools\playit\playit.exe",
@@ -51,7 +51,7 @@ if ($TestOnlyLoadFunctions) { return }
 
 $files = Get-ReleaseFiles -Root $Root
 if ($files.Count -eq 0) {
-    Write-Error "No encontre ningun archivo para empaquetar (Root: $Root)."
+    Write-Error "Could not find any files to package (Root: $Root)."
     exit 1
 }
 
@@ -67,4 +67,4 @@ if (Test-Path $OutputZip) { Remove-Item -Force $OutputZip }
 Compress-Archive -Path (Join-Path $stageDir "*") -DestinationPath $OutputZip -Force
 Remove-Item -Recurse -Force $stageDir
 
-Write-Host "Release zip creado en $OutputZip ($($files.Count) archivos)."
+Write-Host "Release zip created at $OutputZip ($($files.Count) files)."

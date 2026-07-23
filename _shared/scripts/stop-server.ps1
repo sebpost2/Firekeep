@@ -1,28 +1,28 @@
-# Apaga un server de forma limpia y sin drama:
-#   1. Le manda 'stop' por RCON (esto GUARDA el mundo correctamente).
-#   2. Espera a que el proceso de Java termine solo.
-#   3. Cierra el tunel de playit.gg si quedo abierto.
+# Stops a server cleanly and without drama:
+#   1. Sends 'stop' via RCON (this SAVES the world properly).
+#   2. Waits for the Java process to end on its own.
+#   3. Closes the playit.gg tunnel if it was left open.
 #
-# No necesita que lo hayas arrancado desde una ventana en particular: encuentra
-# el server que esta corriendo por su puerto. Podes correrlo con doble click
-# desde "Detener Server.bat".
+# Doesn't need to have been started from any particular window: it finds
+# the running server by its port. You can run it by double-clicking
+# "Stop Server.bat".
 #
-# Uso opcional:  stop-server.ps1 -ServerPath "D:\...\servers\Mi Server"
+# Optional usage:  stop-server.ps1 -ServerPath "D:\...\servers\My Server"
 
 param(
-    [string]$ServerPath,   # carpeta de un server puntual (opcional)
-    [switch]$KeepTunnel    # si se pasa, NO cierra el tunel de playit.gg
+    [string]$ServerPath,   # a specific server's folder (optional)
+    [switch]$KeepTunnel    # if passed, does NOT close the playit.gg tunnel
 )
 
 $ErrorActionPreference = "Stop"
 
-# Cargar el cliente RCON compartido.
+# Load the shared RCON client.
 . (Join-Path $PSScriptRoot "rcon.ps1")
 
-# Raiz de GameServers (este script vive en _shared\scripts\).
+# GameServers root (this script lives in _shared\scripts\).
 $gsRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 
-# --- Descubrir todas las instancias de server (Juego\servers\Instancia\) ---
+# --- Discover all server instances (Game\servers\Instance\) ---
 function Get-AllServerInstances {
     $result = @()
     Get-ChildItem -Path $gsRoot -Directory | Where-Object { $_.Name -ne "_shared" } | ForEach-Object {
@@ -38,17 +38,17 @@ function Get-AllServerInstances {
     return $result
 }
 
-# Cierra el tunel de playit.gg (proceso compartido) si sigue abierto.
+# Closes the playit.gg tunnel (shared process) if it's still open.
 function Stop-Tunnel {
     if ($KeepTunnel) { return }
     $procs = Get-Process -Name "playit" -ErrorAction SilentlyContinue
     if ($procs) {
-        Write-Host "Cerrando el tunel de playit.gg..."
+        Write-Host "Closing the playit.gg tunnel..."
         $procs | Stop-Process -Force -ErrorAction SilentlyContinue
     }
 }
 
-# Detiene UN server dado (objeto con .Name y .Path). Devuelve $true si lo detuvo.
+# Stops ONE given server (object with .Name and .Path). Returns $true if it stopped it.
 function Stop-OneServer {
     param($server)
 
@@ -64,30 +64,30 @@ function Stop-OneServer {
     $rconPass = $props["rcon.password"]
 
     Write-Host ""
-    Write-Host "=== Deteniendo: $($server.Name) ==="
+    Write-Host "=== Stopping: $($server.Name) ==="
 
-    # PID de Java (el que escucha el puerto del server) para poder esperar a que cierre.
+    # Java's PID (the one listening on the server's port) so we can wait for it to close.
     $javaPid = Get-ListenerPid -Port $serverPort
 
     if ($rconOn -and $rconPass) {
         try {
-            Write-Host "Enviando 'stop' por RCON (guardando el mundo)..."
+            Write-Host "Sending 'stop' via RCON (saving the world)..."
             Invoke-RconCommand -Port $rconPort -Password $rconPass -Command "stop" | Out-Null
         } catch {
-            Write-Host "  Aviso: no pude usar RCON ($($_.Exception.Message))."
-            # Igual seguimos: puede que el server ya este cerrando.
+            Write-Host "  Warning: could not use RCON ($($_.Exception.Message))."
+            # Keep going anyway: the server might already be shutting down.
         }
     } else {
-        Write-Host "  Este server no tiene RCON activado, no puedo apagarlo de forma limpia."
-        Write-Host "  Escribi 'stop' en la ventana del server para guardarlo bien,"
-        Write-Host "  o pedime que le active RCON para la proxima."
+        Write-Host "  This server doesn't have RCON enabled, I can't stop it cleanly."
+        Write-Host "  Type 'stop' in the server's window to save it properly,"
+        Write-Host "  or have RCON enabled on it for next time."
         Stop-Tunnel
         return $false
     }
 
-    # Esperar a que Java termine solo (guardar 130+ mods puede tardar).
+    # Wait for Java to finish on its own (saving 100+ mods can take a while).
     if ($javaPid) {
-        Write-Host "Esperando a que el server termine de guardar y cerrar..."
+        Write-Host "Waiting for the server to finish saving and closing..."
         $waited = 0
         while ($waited -lt 90) {
             $p = Get-Process -Id $javaPid -ErrorAction SilentlyContinue
@@ -97,15 +97,15 @@ function Stop-OneServer {
         }
         $p = Get-Process -Id $javaPid -ErrorAction SilentlyContinue
         if ($p) {
-            Write-Host "  El server no cerro tras 90s. Forzando el cierre..."
+            Write-Host "  The server didn't close after 90s. Forcing it closed..."
             Stop-Process -Id $javaPid -Force -ErrorAction SilentlyContinue
         } else {
-            Write-Host "  Server cerrado correctamente."
+            Write-Host "  Server closed correctly."
         }
     } else {
-        # No sabiamos el PID; damos un margen para que el 'stop' haga efecto.
+        # We didn't know the PID; give it a moment for the 'stop' to take effect.
         Start-Sleep -Seconds 3
-        Write-Host "  'stop' enviado."
+        Write-Host "  'stop' sent."
     }
 
     Stop-Tunnel
@@ -113,11 +113,11 @@ function Stop-OneServer {
 }
 
 # ---------------------------------------------------------------------------
-# Elegir que detener.
+# Choose what to stop.
 # ---------------------------------------------------------------------------
 if ($ServerPath) {
     if (-not (Test-Path $ServerPath)) {
-        Write-Host "No existe la carpeta: $ServerPath"
+        Write-Host "That folder doesn't exist: $ServerPath"
         exit 1
     }
     $target = [PSCustomObject]@{ Name = (Split-Path $ServerPath -Leaf); Path = $ServerPath }
@@ -126,7 +126,7 @@ if ($ServerPath) {
     exit 0
 }
 
-# Sin -ServerPath: detectar cual(es) estan corriendo (por su puerto RCON).
+# No -ServerPath: detect which one(s) are running (by their RCON port).
 $instances = Get-AllServerInstances
 $running = @()
 foreach ($inst in $instances) {
@@ -142,8 +142,8 @@ foreach ($inst in $instances) {
 
 if ($running.Count -eq 0) {
     Write-Host ""
-    Write-Host "No hay ningun server corriendo (nada que detener)."
-    # Por las dudas, cerrar el tunel si quedo colgado.
+    Write-Host "No server is running (nothing to stop)."
+    # Just in case, close the tunnel if it was left hanging.
     Stop-Tunnel
     Write-Host ""
     exit 0
@@ -153,5 +153,5 @@ foreach ($srv in $running) {
     Stop-OneServer $srv | Out-Null
 }
 Write-Host ""
-Write-Host "Listo."
+Write-Host "Done."
 Write-Host ""

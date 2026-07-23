@@ -1,9 +1,9 @@
-# Helpers de presentacion para la consola del menu (Start.ps1 y afines).
-# Solo caracteres ASCII a proposito: los .ps1 de este repo no llevan BOM, y
-# PowerShell 5.1 los parsea como ANSI sin BOM, asi que cualquier caracter no-ASCII
-# en un string literal (acentos, box-drawing, emoji) puede salir mal en la
-# consola. Ver mrpack-helpers.ps1 / Set-RunConfigJavaAndRam para el mismo tema
-# del lado de archivos.
+# Presentation helpers for the menu console (Start.ps1 and friends).
+# ASCII characters only, on purpose: this repo's .ps1 files have no BOM, and
+# PowerShell 5.1 parses them as ANSI without one, so any non-ASCII character
+# in a string literal (accents, box-drawing, emoji) can render wrong in the
+# console. See mrpack-helpers.ps1 / Set-RunConfigJavaAndRam for the same
+# issue on the file-write side.
 $Script:UiWidth = 64
 
 function Write-UiBanner {

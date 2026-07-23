@@ -1,6 +1,6 @@
 @echo off
-title Detener Server
-echo Deteniendo el server de forma segura (guardando el mundo)...
+title Stop Server
+echo Stopping the server safely (saving the world)...
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0_shared\scripts\stop-server.ps1"
 echo.
 pause

@@ -1,5 +1,5 @@
-# Levanta el tunel de playit.gg en paralelo y despues arranca el server.
-# Al cerrar el server (Ctrl+C o STOP), tambien cierra el tunel.
+# Brings up the playit.gg tunnel in parallel and then starts the server.
+# When the server closes (Ctrl+C or STOP), it also closes the tunnel.
 
 $serverName = Split-Path $PSScriptRoot -Leaf
 $mcRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
@@ -10,7 +10,7 @@ $secretFile = Join-Path $toolDir "secret.key"
 $addrFile = Join-Path $toolDir "address.txt"
 
 if (-not (Test-Path $playitExe)) {
-    Write-Error "No se encontro playit.exe en $playitExe"
+    Write-Error "Could not find playit.exe at $playitExe"
     exit 1
 }
 
@@ -18,10 +18,10 @@ $tunnel = $null
 $addr = $null
 if (Test-Path $secretFile) {
     $secret = (Get-Content $secretFile -Raw).Trim()
-    Write-Host "Iniciando tunel playit.gg..."
+    Write-Host "Starting the playit.gg tunnel..."
     $tunnel = Start-Process -FilePath $playitExe -ArgumentList "--secret", $secret -PassThru -WindowStyle Minimized
 
-    # Leer la direccion publica actual desde playit (y cachearla en address.txt).
+    # Read the current public address from playit (and cache it in address.txt).
     try {
         $rd = Invoke-RestMethod -Uri "https://api.playit.gg/agents/rundata" -Method Post -Body "{}" `
             -Headers @{ Authorization = "Agent-Key $secret"; "Content-Type" = "application/json" } -TimeoutSec 15
@@ -35,24 +35,24 @@ if (Test-Path $secretFile) {
 }
 else {
     Write-Host "==================================================================="
-    Write-Host " playit.gg todavia NO esta configurado (falta secret.key)."
-    Write-Host " Para que amigos de otra red entren, corre UNA vez:"
+    Write-Host " playit.gg is NOT configured yet (missing secret.key)."
+    Write-Host " For friends on another network to join, run this ONCE:"
     Write-Host "   powershell -ExecutionPolicy Bypass -File `"$gsRoot\_shared\scripts\setup-playit.ps1`""
-    Write-Host " Por ahora arranco solo el server (sirve para la misma red/LAN)."
+    Write-Host " For now, starting just the server (works for the same network/LAN)."
     Write-Host "==================================================================="
 }
 
 if ($addr) {
     Write-Host ""
     Write-Host "==================================================================="
-    Write-Host "  DIRECCION PARA TUS AMIGOS  (Minecraft -> Multiplayer -> Add Server)"
+    Write-Host "  ADDRESS FOR YOUR FRIENDS  (Minecraft -> Multiplayer -> Add Server)"
     Write-Host ""
     Write-Host "      $addr"
     Write-Host ""
-    Write-Host "  (misma WiFi que la laptop pueden usar tambien:  <IP-local>:25565)"
+    Write-Host "  (same WiFi as this PC can also use:  <local-IP>:25565)"
     Write-Host "==================================================================="
     Write-Host ""
-    # Dejar la direccion visible en el titulo de la ventana mientras corre el server.
+    # Keep the address visible in the window title while the server is running.
     $host.UI.RawUI.WindowTitle = "$serverName  |  $addr"
 }
 
@@ -60,9 +60,10 @@ try {
     & (Join-Path $PSScriptRoot "start.ps1")
 }
 finally {
-    # Cierre gracioso: si el server sigue vivo (apretaron Ctrl+C o cerraron la
-    # ventana), mandarle 'stop' por RCON para que GUARDE el mundo antes de bajar
-    # todo. Si ya se cerro solo (se escribio 'stop'), esto no hace nada.
+    # Graceful shutdown: if the server is still alive (Ctrl+C or the window
+    # was closed), send it 'stop' via RCON so it SAVES the world before
+    # everything goes down. If it already closed on its own ('stop' was
+    # typed), this does nothing.
     try {
         $rconMod = Join-Path $gsRoot "_shared\scripts\rcon.ps1"
         if (Test-Path $rconMod) {
@@ -72,7 +73,7 @@ finally {
             if ($props["rcon.port"]) { $rp = [int]$props["rcon.port"] }
             if ($props["enable-rcon"] -eq "true" -and $props["rcon.password"] -and (Test-PortOpen -Port $rp)) {
                 Write-Host ""
-                Write-Host "Guardando y deteniendo el server de forma segura..."
+                Write-Host "Saving and stopping the server safely..."
                 $sp = 25565
                 if ($props["server-port"]) { $sp = [int]$props["server-port"] }
                 $javaPid = Get-ListenerPid -Port $sp
@@ -90,7 +91,7 @@ finally {
     } catch { }
 
     if ($tunnel -and -not $tunnel.HasExited) {
-        Write-Host "Cerrando tunel playit.gg..."
+        Write-Host "Closing the playit.gg tunnel..."
         Stop-Process -Id $tunnel.Id -Force
     }
 }

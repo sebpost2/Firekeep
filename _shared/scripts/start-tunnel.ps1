@@ -1,20 +1,20 @@
-# Lanza SOLO el agente de playit.gg (sin arrancar ningun server), compartido
-# entre todos los game servers. Normalmente no hace falta correr esto a mano:
-# el menu (Start.bat) ya levanta el tunel junto con el server.
+# Launches ONLY the playit.gg agent (without starting any server), shared
+# between all the game servers. You normally don't need to run this by hand:
+# the menu (Start.bat) already brings up the tunnel together with the server.
 #
-# Requiere haber corrido antes UNA vez:  setup-playit.ps1  (vincula la cuenta).
+# Requires having run once before:  setup-playit.ps1  (links the account).
 
 $toolDir = Join-Path $PSScriptRoot "..\tools\playit"
 $playitExe = Join-Path $toolDir "playit.exe"
 $secretFile = Join-Path $toolDir "secret.key"
 
 if (-not (Test-Path $playitExe)) {
-    Write-Error "No se encontro playit.exe en $playitExe"
+    Write-Error "Could not find playit.exe at $playitExe"
     exit 1
 }
 
 if (-not (Test-Path $secretFile)) {
-    Write-Error "playit.gg no esta configurado. Corre primero: setup-playit.ps1"
+    Write-Error "playit.gg is not configured. Run setup-playit.ps1 first."
     exit 1
 }
 

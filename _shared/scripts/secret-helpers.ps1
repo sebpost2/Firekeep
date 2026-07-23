@@ -1,11 +1,11 @@
-# Helper para guardar secretos en disco sin dejar una ventana donde el
-# archivo tenga los permisos por defecto/heredados de la carpeta (que pueden
-# ser legibles por otras cuentas de la misma laptop). Se carga con dot-source.
+# Helper for saving secrets to disk without a window where the file has the
+# folder's default/inherited permissions (which other accounts on the same
+# PC might be able to read). Loaded via dot-source.
 
-# Crea el archivo VACIO, le restringe el acceso al usuario actual, y recien
-# despues escribe el contenido. Asi el contenido nunca existe en disco con
-# permisos mas amplios que los restringidos (evita el TOCTOU de crear-luego-
-# restringir).
+# Creates the file EMPTY, restricts access to the current user, and only then
+# writes the content. This way the content never exists on disk with wider
+# permissions than the restricted ones (avoids the create-then-restrict
+# TOCTOU window).
 function Set-RestrictedSecretFile {
     param(
         [Parameter(Mandatory = $true)][string]$Path,

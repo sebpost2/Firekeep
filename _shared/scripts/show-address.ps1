@@ -1,4 +1,4 @@
-# Muestra la direccion publica actual del tunel de playit.gg (sin arrancar nada).
+# Shows the current public address of the playit.gg tunnel (without starting anything).
 . (Join-Path $PSScriptRoot "tunnel-helpers.ps1")
 
 $toolDir = Join-Path (Split-Path -Parent $PSScriptRoot) "tools\playit"
@@ -22,20 +22,20 @@ if (-not $addr -and (Test-Path $addrFile)) { $addr = (Get-Content $addrFile -Raw
 
 Write-Host ""
 if ($addr) {
-    # Copiar la direccion al portapapeles para pegarla directo en WhatsApp.
+    # Copy the address to the clipboard so it's ready to paste in a chat.
     $copied = $false
     try { Set-Clipboard -Value $addr -ErrorAction Stop; $copied = $true } catch { }
 
-    Write-Host "  Direccion del server (Minecraft -> Multiplayer -> Add Server):"
+    Write-Host "  Server address (Minecraft -> Multiplayer -> Add Server):"
     Write-Host ""
     Write-Host "      $addr" -ForegroundColor Yellow
     Write-Host ""
     if ($copied) {
-        Write-Host "  Ya la copie al portapapeles: pegala en WhatsApp con Ctrl+V." -ForegroundColor Cyan
+        Write-Host "  Copied to your clipboard: paste it wherever you're sending it." -ForegroundColor Cyan
     }
-    Write-Host "  (Tu amigo necesita el modpack Cave Horror Project 1 v3.4.1)"
+    Write-Host "  (Your friend needs the same modpack installed to join.)"
 } else {
-    Write-Host "  Todavia no hay direccion. Corre setup-playit.ps1 y crea el tunel"
-    Write-Host "  Minecraft Java en https://playit.gg/account/tunnels"
+    Write-Host "  No address yet. Run setup-playit.ps1 and create the Minecraft"
+    Write-Host "  Java tunnel at https://playit.gg/account/tunnels"
 }
 Write-Host ""

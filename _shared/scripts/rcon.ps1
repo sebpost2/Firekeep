@@ -1,20 +1,20 @@
-# Cliente RCON en PowerShell puro (sin binarios ni descargas extra).
-# RCON es el protocolo estandar de Minecraft para mandarle comandos por TCP.
-# Este archivo NO se corre solo: otros scripts lo cargan con "dot-source"
-# (. rcon.ps1) para reusar sus funciones.
+# Pure PowerShell RCON client (no extra binaries or downloads).
+# RCON is Minecraft's standard protocol for sending it commands over TCP.
+# This file does NOT run on its own: other scripts load it via dot-source
+# (. rcon.ps1) to reuse its functions.
 #
-# Formato de un paquete RCON (todos los enteros son int32 little-endian):
-#   [ largo ][ id ][ tipo ][ cuerpo en ASCII + \0 ][ \0 de relleno ]
-#   'largo' = cantidad de bytes que siguen (id + tipo + cuerpo + 2 ceros) = 10 + largo_cuerpo
-#   tipo 3 = autenticacion, 2 = ejecutar comando, 0 = respuesta del server.
+# RCON packet format (all integers are little-endian int32):
+#   [ length ][ id ][ type ][ ASCII body + \0 ][ padding \0 ]
+#   'length' = number of bytes that follow (id + type + body + 2 zero bytes) = 10 + body length
+#   type 3 = authentication, 2 = execute command, 0 = server response.
 
-# Lee un archivo server.properties y devuelve una tabla clave -> valor.
+# Reads a server.properties file and returns a key -> value table.
 function Read-ServerProperties {
     param([string]$Path)
     $props = @{}
     if (-not (Test-Path $Path)) { return $props }
     foreach ($line in Get-Content $Path) {
-        if ($line -match '^\s*#') { continue }        # comentario
+        if ($line -match '^\s*#') { continue }        # comment
         $idx = $line.IndexOf('=')
         if ($idx -lt 1) { continue }
         $key = $line.Substring(0, $idx).Trim()
@@ -24,7 +24,7 @@ function Read-ServerProperties {
     return $props
 }
 
-# Prueba rapida de si hay algo escuchando en un puerto TCP (sin bloquear mucho).
+# Quick check for whether something is listening on a TCP port (without blocking long).
 function Test-PortOpen {
     param(
         [string]$RconHost = "127.0.0.1",
@@ -47,7 +47,7 @@ function Test-PortOpen {
     }
 }
 
-# Devuelve el PID del proceso que esta escuchando en un puerto (o $null).
+# Returns the PID of the process listening on a port (or $null).
 function Get-ListenerPid {
     param([Parameter(Mandatory = $true)][int]$Port)
     try {
@@ -58,8 +58,8 @@ function Get-ListenerPid {
     return $null
 }
 
-# Se conecta por RCON, autentica y ejecuta un comando. Devuelve la respuesta (texto).
-# Tira una excepcion si no puede conectar o si la contraseña es incorrecta.
+# Connects via RCON, authenticates, and executes a command. Returns the response (text).
+# Throws an exception if it can't connect or the password is wrong.
 function Invoke-RconCommand {
     param(
         [string]$RconHost = "127.0.0.1",
@@ -73,7 +73,7 @@ function Invoke-RconCommand {
     $iar = $client.BeginConnect($RconHost, $Port, $null, $null)
     if (-not $iar.AsyncWaitHandle.WaitOne($TimeoutMs)) {
         $client.Close()
-        throw "No se pudo conectar a RCON en ${RconHost}:${Port}"
+        throw "Could not connect to RCON at ${RconHost}:${Port}"
     }
     $client.EndConnect($iar)
 
@@ -81,7 +81,7 @@ function Invoke-RconCommand {
     $stream.ReadTimeout = $TimeoutMs
     $stream.WriteTimeout = $TimeoutMs
 
-    # --- helpers locales ---
+    # --- local helpers ---
     $sendPacket = {
         param($id, $type, $body)
         $bodyBytes = [System.Text.Encoding]::ASCII.GetBytes($body)
@@ -101,24 +101,24 @@ function Invoke-RconCommand {
         $bw.Dispose()
     }
 
-    # Lee exactamente N bytes del stream (o tira excepcion si se corta).
+    # Reads exactly N bytes from the stream (or throws if cut short).
     $readExact = {
         param($count)
         $buf = New-Object byte[] $count
         $off = 0
         while ($off -lt $count) {
             $r = $stream.Read($buf, $off, $count - $off)
-            if ($r -le 0) { throw "Conexion RCON cerrada por el server" }
+            if ($r -le 0) { throw "RCON connection closed by the server" }
             $off += $r
         }
         return $buf
     }
 
-    # Lee un paquete completo y devuelve un objeto con id/tipo/cuerpo.
+    # Reads a full packet and returns an object with id/type/body.
     $readPacket = {
         $lenBytes = & $readExact 4
         $len = [System.BitConverter]::ToInt32($lenBytes, 0)
-        if ($len -lt 10 -or $len -gt 4110) { throw "Paquete RCON con largo invalido ($len)" }
+        if ($len -lt 10 -or $len -gt 4110) { throw "RCON packet with invalid length ($len)" }
         $payload = & $readExact $len
         $id = [System.BitConverter]::ToInt32($payload, 0)
         $type = [System.BitConverter]::ToInt32($payload, 4)
@@ -131,22 +131,22 @@ function Invoke-RconCommand {
     }
 
     try {
-        # 1) Autenticacion (tipo 3). Si falla, el server responde con Id = -1.
+        # 1) Authentication (type 3). If it fails, the server responds with Id = -1.
         & $sendPacket 1 3 $Password
         $auth = & $readPacket
-        # Algunos servers mandan un paquete vacio (tipo 0) antes de la respuesta de auth.
+        # Some servers send an empty packet (type 0) before the auth response.
         if ($auth.Type -eq 0) { $auth = & $readPacket }
         if ($auth.Id -eq -1) {
-            throw "Autenticacion RCON rechazada (contraseña incorrecta)"
+            throw "RCON authentication rejected (wrong password)"
         }
 
-        # 2) Ejecutar el comando (tipo 2) y leer la respuesta.
+        # 2) Execute the command (type 2) and read the response.
         & $sendPacket 2 2 $Command
         $resp = $null
         try {
             $resp = & $readPacket
         } catch {
-            # 'stop' suele cerrar la conexion antes de responder: no es un error.
+            # 'stop' usually closes the connection before responding: not an error.
             $resp = [PSCustomObject]@{ Id = 2; Type = 0; Body = "" }
         }
         return $resp.Body

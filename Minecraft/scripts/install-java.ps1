@@ -1,7 +1,7 @@
-# Descarga e instala (portable, sin admin) una version de Java Temurin/Adoptium
-# dentro de GameServers\Minecraft\tools\java\<version>\
+# Downloads and installs (portable, no admin) a Temurin/Adoptium Java version
+# inside GameServers\Minecraft\tools\java\<version>\
 #
-# Uso: .\install-java.ps1 -MajorVersion 21
+# Usage: .\install-java.ps1 -MajorVersion 21
 
 param(
     [Parameter(Mandatory = $true)]
@@ -15,32 +15,32 @@ $mcRoot = Split-Path -Parent $PSScriptRoot
 $javaDir = Join-Path $mcRoot "tools\java\$MajorVersion"
 
 if (Test-Path (Join-Path $javaDir "bin\java.exe")) {
-    Write-Host "Java $MajorVersion ya esta instalado en $javaDir"
+    Write-Host "Java $MajorVersion is already installed at $javaDir"
     exit 0
 }
 
 New-Item -ItemType Directory -Force -Path $javaDir | Out-Null
 
-# Pedimos el checksum SHA256 oficial junto con el link de descarga, para
-# verificar el zip antes de instalarlo (evita instalar un archivo corrupto o
-# alterado en el camino).
+# We ask for the official SHA256 checksum along with the download link, to
+# verify the zip before installing it (avoids installing a corrupted or
+# tampered file along the way).
 $assetsUrl = "https://api.adoptium.net/v3/assets/latest/$MajorVersion/hotspot?os=windows&architecture=x64&image_type=jdk"
 $asset = (Invoke-RestMethod -Uri $assetsUrl -UseBasicParsing) | Select-Object -First 1
 $url = $asset.binary.package.link
 $expectedSha256 = $asset.binary.package.checksum
 if (-not $url -or -not $expectedSha256) {
-    Write-Error "No pude obtener el link/checksum de Java $MajorVersion desde Adoptium."
+    Write-Error "Could not get the link/checksum for Java $MajorVersion from Adoptium."
     exit 1
 }
 
 $zipPath = Join-Path $env:TEMP "jdk$MajorVersion.zip"
 
-Write-Host "Descargando Java $MajorVersion (Temurin/Adoptium)..."
+Write-Host "Downloading Java $MajorVersion (Temurin/Adoptium)..."
 Invoke-WebRequest -Uri $url -OutFile $zipPath -UseBasicParsing
 
 if (-not (Test-Sha256Checksum -Path $zipPath -ExpectedSha256 $expectedSha256)) {
     Remove-Item -Force $zipPath -ErrorAction SilentlyContinue
-    Write-Error "El checksum de la descarga no coincide con el esperado. Se aborto la instalacion."
+    Write-Error "The download's checksum doesn't match the expected one. Installation aborted."
     exit 1
 }
 
@@ -48,11 +48,11 @@ $extractTmp = Join-Path $env:TEMP "jdk$MajorVersion-extract"
 if (Test-Path $extractTmp) { Remove-Item -Recurse -Force $extractTmp }
 Expand-Archive -Path $zipPath -DestinationPath $extractTmp -Force
 
-# El zip trae una carpeta interna tipo jdk-21.0.x+y; movemos su contenido al destino final.
+# The zip has an inner folder like jdk-21.0.x+y; we move its contents to the final destination.
 $inner = Get-ChildItem $extractTmp | Select-Object -First 1
 Get-ChildItem $inner.FullName | Move-Item -Destination $javaDir -Force
 
 Remove-Item -Recurse -Force $extractTmp
 Remove-Item -Force $zipPath
 
-Write-Host "Java $MajorVersion instalado en $javaDir"
+Write-Host "Java $MajorVersion installed at $javaDir"

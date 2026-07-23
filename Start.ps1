@@ -1,12 +1,12 @@
-# Menu unico para arrancar cualquier server (Minecraft y los que se vayan agregando).
-# Detecta automaticamente cualquier carpeta <Juego>\servers\<Instancia>\ que tenga
-# un start-with-tunnel.ps1, asi que agregar un juego nuevo no requiere tocar este script.
+# Single menu to start any server (Minecraft and whatever gets added later).
+# Auto-detects any <Game>\servers\<Instance>\ folder that has a
+# start-with-tunnel.ps1, so adding a new game doesn't require touching this script.
 
 $root = $PSScriptRoot
 . (Join-Path $root "_shared\scripts\console-ui.ps1")
 
-Write-UiBanner -Title "GAME SERVERS" -Subtitle "Tunel a tu PC para que tus amigos jueguen con vos"
-Write-UiHint "Guia completa (paso a paso, con soluciones a problemas comunes): LEEME.md"
+Write-UiBanner -Title "GAME SERVERS" -Subtitle "A tunnel to your PC so your friends can play with you"
+Write-UiHint "Full guide (step by step, with fixes for common problems): README.md"
 
 $instances = @(
     Get-ChildItem -Path $root -Directory |
@@ -31,29 +31,29 @@ $instances = @(
 $newServerChoice = $instances.Count
 
 if ($instances.Count -eq 0) {
-    Write-UiHint "No hay ningun server creado todavia. Empeza por la opcion de abajo."
+    Write-UiHint "No server created yet. Start with the option below."
 }
 
-Write-UiSection "Servers disponibles"
+Write-UiSection "Available servers"
 for ($i = 0; $i -lt $instances.Count; $i++) {
     Write-UiMenuItem -Index $i -Label "$($instances[$i].Game) - $($instances[$i].Name)"
 }
-Write-UiMenuItem -Index $newServerChoice -Label "Crear un server nuevo (modpack de Modrinth)" -Action
+Write-UiMenuItem -Index $newServerChoice -Label "Create a new server (Modrinth modpack)" -Action
 Write-Host ("  " + ("-" * 62)) -ForegroundColor DarkGray
 Write-Host ""
-Write-UiHint "Cuando arranque, te va a mostrar (y copiar al portapapeles) la"
-Write-UiHint "direccion para pasarle a tus amigos."
+Write-UiHint "When it starts, it'll show you (and copy to your clipboard) the"
+Write-UiHint "address to send your friends."
 Write-Host ""
 
-$choice = Read-Host "Elegi un numero y apreta Enter"
+$choice = Read-Host "Pick a number and press Enter"
 if ($choice -notmatch '^\d+$' -or [int]$choice -gt $newServerChoice) {
-    Write-Host "  Opcion invalida." -ForegroundColor Red
+    Write-Host "  Invalid choice." -ForegroundColor Red
     exit 1
 }
 
 if ([int]$choice -eq $newServerChoice) {
-    $name = Read-Host "Nombre para el nuevo server (ej. MiModpack)"
-    $mrpack = Read-Host "Ruta o URL del archivo .mrpack (Enter para instalarlo a mano despues)"
+    $name = Read-Host "Name for the new server (e.g. MyModpack)"
+    $mrpack = Read-Host "Path or URL to the .mrpack file (Enter to install it manually later)"
     $newServerScript = Join-Path $root "Minecraft\scripts\new-server.ps1"
     if ([string]::IsNullOrWhiteSpace($mrpack)) {
         & $newServerScript -Name $name
@@ -68,11 +68,11 @@ $selected = $instances[[int]$choice]
 $launcher = Join-Path $selected.Path "start-with-tunnel.ps1"
 
 if (-not (Test-Path $launcher)) {
-    Write-Host "  No encontre start-with-tunnel.ps1 en $($selected.Path)" -ForegroundColor Red
+    Write-Host "  Could not find start-with-tunnel.ps1 at $($selected.Path)" -ForegroundColor Red
     exit 1
 }
 
-Write-UiSuccess "Arrancando $($selected.Game) - $($selected.Name)..."
-Write-UiHint "(para apagarlo: doble click en 'Detener Server.bat', o escribi 'stop' aca)"
+Write-UiSuccess "Starting $($selected.Game) - $($selected.Name)..."
+Write-UiHint "(to stop it: double-click 'Stop Server.bat', or type 'stop' here)"
 Write-Host ""
 & $launcher

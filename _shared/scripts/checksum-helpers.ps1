@@ -1,8 +1,8 @@
-# Verificacion de checksum SHA256 para archivos descargados (ej. el JDK de
-# Adoptium en install-java.ps1). Se carga con dot-source.
+# SHA256 checksum verification for downloaded files (e.g. the Adoptium JDK in
+# install-java.ps1). Loaded via dot-source.
 
-# Compara el SHA256 de un archivo contra el esperado. Devuelve $false si el
-# archivo no existe o si el hash no coincide (nunca tira excepcion).
+# Compares a file's SHA256 against the expected value. Returns $false if the
+# file doesn't exist or the hash doesn't match (never throws).
 function Test-Sha256Checksum {
     param(
         [Parameter(Mandatory = $true)][string]$Path,

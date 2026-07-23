@@ -1,9 +1,9 @@
-# Helpers para instalar modpacks de Modrinth (.mrpack) via mrpack.exe.
-# Se carga con dot-source.
+# Helpers for installing Modrinth modpacks (.mrpack) via mrpack.exe.
+# Loaded via dot-source.
 
-# Traduce la version de Minecraft del modpack a la version mayor de Java que
-# necesita, segun la misma guia que ya vive como comentario en run.config.ps1:
-#   Minecraft 1.16 y anteriores -> 8
+# Translates the modpack's Minecraft version to the Java major version it
+# needs, following the same guide that lives as a comment in run.config.ps1:
+#   Minecraft 1.16 and earlier -> 8
 #   Minecraft 1.17 - 1.20.4     -> 17
 #   Minecraft 1.20.5+           -> 21
 function Get-JavaVersionForMinecraft {
@@ -12,7 +12,7 @@ function Get-JavaVersionForMinecraft {
     )
 
     if ($McVersion -notmatch '^\d+(\.\d+){0,2}$') {
-        throw "No pude interpretar la version de Minecraft '$McVersion'."
+        throw "Could not parse Minecraft version '$McVersion'."
     }
 
     $parts = $McVersion.Split('.') | ForEach-Object { [int]$_ }
@@ -28,16 +28,16 @@ function Get-JavaVersionForMinecraft {
     return 8
 }
 
-# Lee la version de Minecraft del modpack directamente del .mrpack (es un zip
-# que trae modrinth.index.json con los metadatos), sin depender de la salida
-# de mrpack.exe.
+# Reads the modpack's Minecraft version directly from the .mrpack (it's a zip
+# that carries modrinth.index.json with the metadata), without depending on
+# mrpack.exe's output.
 function Get-MinecraftVersionFromMrpack {
     param(
         [Parameter(Mandatory = $true)][string]$MrpackPath
     )
 
     if (-not (Test-Path $MrpackPath)) {
-        throw "No encontre el archivo .mrpack en '$MrpackPath'."
+        throw "Could not find the .mrpack file at '$MrpackPath'."
     }
 
     Add-Type -AssemblyName System.IO.Compression.FileSystem
@@ -45,7 +45,7 @@ function Get-MinecraftVersionFromMrpack {
     try {
         $entry = $zip.GetEntry("modrinth.index.json")
         if (-not $entry) {
-            throw "El .mrpack '$MrpackPath' no tiene modrinth.index.json."
+            throw "The .mrpack '$MrpackPath' has no modrinth.index.json."
         }
         $reader = New-Object System.IO.StreamReader($entry.Open())
         try {
@@ -60,24 +60,24 @@ function Get-MinecraftVersionFromMrpack {
     }
 
     if (-not $json.dependencies -or -not $json.dependencies.minecraft) {
-        throw "modrinth.index.json en '$MrpackPath' no tiene dependencies.minecraft."
+        throw "modrinth.index.json in '$MrpackPath' has no dependencies.minecraft."
     }
     return $json.dependencies.minecraft
 }
 
-# Detecta el mod loader del modpack (fabric/forge/quilt/neoforge) leyendo las
-# mismas dependencies de modrinth.index.json. mrpack.exe (mrpack-install) solo
-# instala el server jar automaticamente para Fabric hoy: para Forge falla con
-# "forge provider not implemented" y pide instalar el server a mano. Con esto
-# new-server.ps1 puede avisar ANTES de intentarlo, en vez de dejar al usuario
-# con un error crudo de Go a mitad de la instalacion.
+# Detects the modpack's mod loader (fabric/forge/quilt/neoforge) by reading
+# the same dependencies from modrinth.index.json. mrpack.exe (mrpack-install)
+# only auto-installs the server jar for Fabric today: for Forge it fails with
+# "forge provider not implemented" and asks you to install the server by
+# hand. This lets new-server.ps1 warn BEFORE attempting it, instead of
+# leaving the user with a raw Go error mid-install.
 function Get-ModpackLoader {
     param(
         [Parameter(Mandatory = $true)][string]$MrpackPath
     )
 
     if (-not (Test-Path $MrpackPath)) {
-        throw "No encontre el archivo .mrpack en '$MrpackPath'."
+        throw "Could not find the .mrpack file at '$MrpackPath'."
     }
 
     Add-Type -AssemblyName System.IO.Compression.FileSystem
@@ -85,7 +85,7 @@ function Get-ModpackLoader {
     try {
         $entry = $zip.GetEntry("modrinth.index.json")
         if (-not $entry) {
-            throw "El .mrpack '$MrpackPath' no tiene modrinth.index.json."
+            throw "The .mrpack '$MrpackPath' has no modrinth.index.json."
         }
         $reader = New-Object System.IO.StreamReader($entry.Open())
         try {
@@ -101,17 +101,17 @@ function Get-ModpackLoader {
 
     $deps = $json.dependencies
     if (-not $deps) {
-        throw "modrinth.index.json en '$MrpackPath' no tiene dependencies."
+        throw "modrinth.index.json in '$MrpackPath' has no dependencies."
     }
     if ($deps.'fabric-loader') { return "fabric" }
     if ($deps.forge) { return "forge" }
     if ($deps.'quilt-loader') { return "quilt" }
     if ($deps.neoforge) { return "neoforge" }
-    throw "No pude detectar el mod loader del modpack en '$MrpackPath'."
+    throw "Could not detect the modpack's mod loader in '$MrpackPath'."
 }
 
-# Actualiza JavaVersion y MaxRam en un run.config.ps1 existente sin tocar el
-# resto del archivo (comentarios, MinRam, UseModpackLauncher, etc.).
+# Updates JavaVersion and MaxRam in an existing run.config.ps1 without
+# touching the rest of the file (comments, MinRam, UseModpackLauncher, etc.).
 function Set-RunConfigJavaAndRam {
     param(
         [Parameter(Mandatory = $true)][string]$Path,
@@ -119,9 +119,10 @@ function Set-RunConfigJavaAndRam {
         [Parameter(Mandatory = $true)][string]$MaxRam
     )
 
-    # Leemos y escribimos UTF-8 sin BOM explicitamente: Get-Content/Set-Content
-    # sin -Encoding asumen ANSI en archivos sin BOM (como este), lo que rompe
-    # los acentos de los comentarios (ver run.config.ps1 de _template).
+    # Explicitly read/write UTF-8 without BOM: Get-Content/Set-Content without
+    # -Encoding assume ANSI on files without a BOM (like this one), which
+    # breaks accented comments (see _template's run.config.ps1... though this
+    # version of the template is plain ASCII English now).
     $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
     $content = [System.IO.File]::ReadAllText($Path, $utf8NoBom)
     $content = $content -replace '\$JavaVersion\s*=\s*\d+', "`$JavaVersion = $JavaVersion"
