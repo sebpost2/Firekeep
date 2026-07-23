@@ -1,0 +1,21 @@
+# Portable runtimes and third-party binaries (large, redownloadable)
+Minecraft/tools/java/
+_shared/tools/playit/*.exe
+_shared/tools/*.exe
+
+# Secrets / local state (never commit)
+_shared/tools/playit/secret.key
+_shared/tools/playit/address.txt
+
+# Server instances are personal (worlds, ops/whitelist/bans, configs, RCON
+# passwords) - only the generic _template ships. This blanket ignore is the
+# root fix; do not re-add per-file patterns for instance data.
+Minecraft/servers/*/
+!Minecraft/servers/_template/
+!Minecraft/servers/_template/**
+
+# Backups
+*.bak
+
+# Brainstorming/design scratch state (ephemeral)
+.superpowers/

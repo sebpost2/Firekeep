@@ -1,0 +1,3 @@
+# Al poner eula=true confirmas que leiste y aceptas la Minecraft EULA:
+# https://aka.ms/MinecraftEULA
+eula=false
