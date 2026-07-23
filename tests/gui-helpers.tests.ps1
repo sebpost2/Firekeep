@@ -18,7 +18,7 @@ Describe "Get-ServerInstances" {
 
     It "finds a server instance nested under Game\servers\Instance" {
         $result = @(Get-ServerInstances -Root $root)
-        ($result | Where-Object { $_.Name -eq "Cave Horror Project" }).Count | Should Be 1
+        @($result | Where-Object { $_.Name -eq "Cave Horror Project" }).Count | Should Be 1
     }
 
     It "tags the found instance with its game name and full path" {
@@ -30,17 +30,17 @@ Describe "Get-ServerInstances" {
 
     It "excludes the _template instance" {
         $result = @(Get-ServerInstances -Root $root)
-        ($result | Where-Object { $_.Name -eq "_template" }).Count | Should Be 0
+        @($result | Where-Object { $_.Name -eq "_template" }).Count | Should Be 0
     }
 
     It "excludes _shared from being treated as a game" {
         $result = @(Get-ServerInstances -Root $root)
-        ($result | Where-Object { $_.Game -eq "_shared" }).Count | Should Be 0
+        @($result | Where-Object { $_.Game -eq "_shared" }).Count | Should Be 0
     }
 
     It "ignores a game folder that has no servers subfolder yet" {
         $result = @(Get-ServerInstances -Root $root)
-        ($result | Where-Object { $_.Game -eq "Valheim" }).Count | Should Be 0
+        @($result | Where-Object { $_.Game -eq "Valheim" }).Count | Should Be 0
     }
 
     It "returns an empty array when the root has no game folders at all" {
