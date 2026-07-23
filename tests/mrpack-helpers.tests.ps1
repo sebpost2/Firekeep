@@ -34,3 +34,82 @@ Describe "Get-JavaVersionForMinecraft" {
         { Get-JavaVersionForMinecraft -McVersion "not-a-version" } | Should Throw
     }
 }
+
+Describe "Get-MinecraftVersionFromMrpack" {
+
+    function New-TestMrpack([string]$Path, [string]$IndexJson) {
+        if (Test-Path $Path) { Remove-Item -Force $Path }
+        $workDir = Join-Path $env:TEMP ("mrpack-fixture-" + [Guid]::NewGuid().ToString("N"))
+        New-Item -ItemType Directory -Force -Path $workDir | Out-Null
+        if ($null -ne $IndexJson) {
+            Set-Content -Path (Join-Path $workDir "modrinth.index.json") -Value $IndexJson -Encoding utf8
+        }
+        else {
+            # Compress-Archive needs at least one file; give it a harmless placeholder.
+            Set-Content -Path (Join-Path $workDir "overrides.txt") -Value "x" -Encoding utf8
+        }
+        $zipPath = "$Path.zip"
+        Compress-Archive -Path (Join-Path $workDir "*") -DestinationPath $zipPath -Force
+        Move-Item -Path $zipPath -Destination $Path -Force
+        Remove-Item -Recurse -Force $workDir
+    }
+
+    $validPack = Join-Path $env:TEMP ("valid-" + [Guid]::NewGuid().ToString("N") + ".mrpack")
+    New-TestMrpack -Path $validPack -IndexJson '{"dependencies":{"minecraft":"1.20.1","fabric-loader":"0.15.0"}}'
+
+    $noIndexPack = Join-Path $env:TEMP ("noindex-" + [Guid]::NewGuid().ToString("N") + ".mrpack")
+    New-TestMrpack -Path $noIndexPack -IndexJson $null
+
+    $badJsonPack = Join-Path $env:TEMP ("badjson-" + [Guid]::NewGuid().ToString("N") + ".mrpack")
+    New-TestMrpack -Path $badJsonPack -IndexJson '{not valid json'
+
+    It "reads the minecraft version from modrinth.index.json inside the .mrpack zip" {
+        Get-MinecraftVersionFromMrpack -MrpackPath $validPack | Should Be "1.20.1"
+    }
+
+    It "throws when the .mrpack has no modrinth.index.json" {
+        { Get-MinecraftVersionFromMrpack -MrpackPath $noIndexPack } | Should Throw
+    }
+
+    It "throws when modrinth.index.json is not valid JSON" {
+        { Get-MinecraftVersionFromMrpack -MrpackPath $badJsonPack } | Should Throw
+    }
+
+    It "throws when the file does not exist" {
+        { Get-MinecraftVersionFromMrpack -MrpackPath (Join-Path $env:TEMP "does-not-exist.mrpack") } | Should Throw
+    }
+
+    Remove-Item -Force $validPack, $noIndexPack, $badJsonPack -ErrorAction SilentlyContinue
+}
+
+Describe "Set-RunConfigJavaAndRam" {
+
+    $configPath = Join-Path $env:TEMP ("run.config-" + [Guid]::NewGuid().ToString("N") + ".ps1")
+
+    BeforeEach {
+        @(
+            '# Configuracion de esta instancia de server.'
+            '$JavaVersion = 21'
+            ''
+            '$MinRam = "2G"'
+            '$MaxRam = "6G"'
+            ''
+            '$UseModpackLauncher = $true'
+        ) -join "`r`n" | Set-Content -Path $configPath -Encoding utf8
+    }
+
+    It "updates JavaVersion and MaxRam while leaving other lines untouched" {
+        Set-RunConfigJavaAndRam -Path $configPath -JavaVersion 17 -MaxRam "8G"
+        $content = Get-Content -Path $configPath -Raw
+        $content | Should Match '\$JavaVersion = 17'
+        $content | Should Match '\$MaxRam = "8G"'
+        $content | Should Match '\$UseModpackLauncher = \$true'
+    }
+
+    It "leaves MinRam untouched" {
+        Set-RunConfigJavaAndRam -Path $configPath -JavaVersion 17 -MaxRam "8G"
+        Get-Content -Path $configPath -Raw | Should Match '\$MinRam = "2G"'
+    }
+
+    Remove-Item -Force $configPath -ErrorAction SilentlyContinue
+}
