@@ -96,6 +96,16 @@
 - Added a troubleshooting section to `LEEME.md` covering: the Windows Firewall "Allow access" prompt for Java/playit.exe (silent tunnel failure if dismissed), antivirus potentially quarantining the unsigned `playit.exe`/`mrpack.exe` binaries, RAM sizing guidance (check Task Manager before assigning server memory), and that the first run legitimately takes minutes (Java + mod downloads). Also clarified in the modpack section that automatic install is Fabric-only, matching the `Get-ModpackLoader` guard.
 - Validation: read-through only; no test target (pure documentation, no runtime behavior to assert beyond what `Get-ModpackLoader`'s tests already cover).
 
+### Localization: full English translation and file renames
+- User request: translate the entire toolkit to English, including file names.
+- Renamed root files (`git mv`) to English equivalents: `LEEME.md` -> `README.md`, `Detener Server.bat` -> `Stop Server.bat`, `Administrar Mapas.bat` -> `Manage Maps.bat`, `Mi Direccion.bat` -> `My Address.bat`, `Ver IP Tailscale.bat` -> `View Tailscale IP.bat`, `mundos.ps1` -> `worlds.ps1` (trash folder `_papelera` -> `_trash`).
+- Translated every comment, `Write-Host` message, and doc across all `.ps1`/`.bat`/`.md` files (about 25 files) — including the large `worlds.ps1` CRUD script that hadn't been touched since before this session's earlier work.
+- Along the way, found and fixed a second personal-data leak of the same class as the CONEXION doc: `show-address.ps1` and `show-tailscale-address.ps1` (shared, generic scripts included in every release) had hardcoded references to "Cave Horror Project 1 v3.4.1" and a specific LAN IP. Generalized both to modpack-agnostic wording.
+- Updated `tests/package-release.tests.ps1`'s fixture and assertions to the renamed file names.
+- Validation: full suite 36/36; every modified `.ps1` syntax-checked via `Parser.ParseFile`; real E2E rerun of the Forge-guard path against the live Create+ pack confirmed the translated messages work correctly and the folder is still cleaned up; rebuilt the release zip and confirmed no leaks with the new names, and that `README.md`'s corrected wording ships.
+- One false alarm caught and ruled out during verification: `Get-Content` without `-Encoding` misread `README.md`'s em dash as mojibake — this was the checking command's own encoding default (same PS5.1 no-BOM-assumes-ANSI quirk as earlier), not a defect in the file itself; confirmed the source bytes are correct UTF-8 and that this class of bug only affects `.ps1` files PowerShell parses as source, not markdown read by editors/browsers.
+- Deliberately left untranslated: `Minecraft/servers/Cave Horror Project/CONNECTION - Options and Plan.md` — ~245 lines of personal, dated network-troubleshooting history, never shipped (gitignored, moved out of the public allow-list earlier this session), translating it would have been effort spent on a document only the repo owner ever reads.
+
 ## Coverage and Known Gaps
 
 - Full Pester suite: **36/36 passing** (`Invoke-Pester .\tests\`), up from the pre-existing 20.
