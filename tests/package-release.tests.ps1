@@ -25,30 +25,30 @@ Describe "Get-ReleaseFiles" {
     $result = Get-ReleaseFiles -Root $fixtureRoot
 
     It "includes the framework menu and scripts" {
-        $result | Should Contain (Join-Path $fixtureRoot "Start.bat")
-        $result | Should Contain (Join-Path $fixtureRoot "Minecraft\scripts\new-server.ps1")
+        ($result -contains (Join-Path $fixtureRoot "Start.bat")) | Should Be $true
+        ($result -contains (Join-Path $fixtureRoot "Minecraft\scripts\new-server.ps1")) | Should Be $true
     }
 
     It "includes the generic _template" {
-        $result | Should Contain (Join-Path $fixtureRoot "Minecraft\servers\_template\run.config.ps1")
+        ($result -contains (Join-Path $fixtureRoot "Minecraft\servers\_template\run.config.ps1")) | Should Be $true
     }
 
     It "excludes the personal Cave Horror Project server instance" {
-        $result | Should Not Contain (Join-Path $fixtureRoot "Minecraft\servers\Cave Horror Project\ops.json")
-        $result | Should Not Contain (Join-Path $fixtureRoot "Minecraft\servers\Cave Horror Project\world\level.dat")
+        ($result -contains (Join-Path $fixtureRoot "Minecraft\servers\Cave Horror Project\ops.json")) | Should Be $false
+        ($result -contains (Join-Path $fixtureRoot "Minecraft\servers\Cave Horror Project\world\level.dat")) | Should Be $false
     }
 
     It "excludes the playit secret and cached address" {
-        $result | Should Not Contain (Join-Path $fixtureRoot "_shared\tools\playit\secret.key")
-        $result | Should Not Contain (Join-Path $fixtureRoot "_shared\tools\playit\address.txt")
+        ($result -contains (Join-Path $fixtureRoot "_shared\tools\playit\secret.key")) | Should Be $false
+        ($result -contains (Join-Path $fixtureRoot "_shared\tools\playit\address.txt")) | Should Be $false
     }
 
     It "excludes portable Java runtimes (redownloadable, large)" {
-        $result | Should Not Contain (Join-Path $fixtureRoot "Minecraft\tools\java\21\bin\java.exe")
+        ($result -contains (Join-Path $fixtureRoot "Minecraft\tools\java\21\bin\java.exe")) | Should Be $false
     }
 
     It "includes the test suite" {
-        $result | Should Contain (Join-Path $fixtureRoot "tests\checksum-helpers.tests.ps1")
+        ($result -contains (Join-Path $fixtureRoot "tests\checksum-helpers.tests.ps1")) | Should Be $true
     }
 
     Remove-Item -Recurse -Force $fixtureRoot -ErrorAction SilentlyContinue
