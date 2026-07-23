@@ -27,3 +27,55 @@ function Get-JavaVersionForMinecraft {
     }
     return 8
 }
+
+# Lee la version de Minecraft del modpack directamente del .mrpack (es un zip
+# que trae modrinth.index.json con los metadatos), sin depender de la salida
+# de mrpack.exe.
+function Get-MinecraftVersionFromMrpack {
+    param(
+        [Parameter(Mandatory = $true)][string]$MrpackPath
+    )
+
+    if (-not (Test-Path $MrpackPath)) {
+        throw "No encontre el archivo .mrpack en '$MrpackPath'."
+    }
+
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $zip = [System.IO.Compression.ZipFile]::OpenRead((Resolve-Path $MrpackPath))
+    try {
+        $entry = $zip.GetEntry("modrinth.index.json")
+        if (-not $entry) {
+            throw "El .mrpack '$MrpackPath' no tiene modrinth.index.json."
+        }
+        $reader = New-Object System.IO.StreamReader($entry.Open())
+        try {
+            $json = $reader.ReadToEnd() | ConvertFrom-Json
+        }
+        finally {
+            $reader.Dispose()
+        }
+    }
+    finally {
+        $zip.Dispose()
+    }
+
+    if (-not $json.dependencies -or -not $json.dependencies.minecraft) {
+        throw "modrinth.index.json en '$MrpackPath' no tiene dependencies.minecraft."
+    }
+    return $json.dependencies.minecraft
+}
+
+# Actualiza JavaVersion y MaxRam en un run.config.ps1 existente sin tocar el
+# resto del archivo (comentarios, MinRam, UseModpackLauncher, etc.).
+function Set-RunConfigJavaAndRam {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][int]$JavaVersion,
+        [Parameter(Mandatory = $true)][string]$MaxRam
+    )
+
+    $content = Get-Content -Path $Path -Raw
+    $content = $content -replace '\$JavaVersion\s*=\s*\d+', "`$JavaVersion = $JavaVersion"
+    $content = $content -replace '\$MaxRam\s*=\s*"[^"]*"', "`$MaxRam = `"$MaxRam`""
+    Set-Content -Path $Path -Value $content -NoNewline -Encoding utf8
+}
