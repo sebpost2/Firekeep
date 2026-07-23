@@ -93,10 +93,15 @@ Las siguientes veces reconecta solo, no tenés que hacer nada.
 
 ## ➕ Agregar OTRO modpack de Minecraft
 
-Opción fácil (recomendada), si el modpack está en Modrinth o tenés el `.mrpack`:
-1. Pedímelo y te lo dejo instalado como hice con Cave Horror Project.
+Opción fácil (recomendada), si el modpack está en Modrinth (trae un archivo `.mrpack`):
+1. Descargá el `.mrpack` del modpack (o copiá su link de descarga directa).
+2. Abrí `Start.bat` y elegí la opción **"Crear un server nuevo"** del menú.
+3. Poné un nombre y pegá la ruta o el link del `.mrpack` cuando te lo pida.
+4. El script instala mods, server jar y config solo, detecta la versión de Java
+   que necesita, te pregunta la RAM y te pide que aceptes la EULA.
+5. Arrancalo desde el menú (`Start.bat`).
 
-Opción manual:
+Opción manual (para modpacks de CurseForge, que no tienen `.mrpack`):
 1. `Minecraft\scripts\new-server.ps1 -Name "NombreDelPack"`
 2. Copiá los "Server Files" del modpack dentro de esa carpeta nueva.
 3. Editá `run.config.ps1` (versión de Java) y `user_jvm_args.txt` (memoria).
