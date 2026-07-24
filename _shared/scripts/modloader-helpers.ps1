@@ -152,3 +152,20 @@ function Get-JavaVersionFromForgeInstallerJar {
     }
     return $null
 }
+
+# Picks which launcher script start.ps1 should invoke for a manually-copied-
+# in (or auto-extracted) modpack instance, in the same priority order
+# Get-DetectedJavaVersion checks its signals: run.bat (modern Forge/
+# NeoForge), then start.bat (raw Fabric), then startserver.bat (ATM-style
+# NeoForge packs that self-install). Returns $null when none exist, so the
+# caller can report a clear "nothing to launch" error instead of guessing.
+function Get-ModpackLauncherScript {
+    param(
+        [Parameter(Mandatory = $true)][string]$InstancePath
+    )
+
+    foreach ($candidate in @("run.bat", "start.bat", "startserver.bat")) {
+        if (Test-Path (Join-Path $InstancePath $candidate)) { return $candidate }
+    }
+    return $null
+}

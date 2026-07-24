@@ -39,14 +39,17 @@ try {
     if ($UseModpackLauncher) {
         # Forge/NeoForge 1.17+ generate run.bat, which reads memory from user_jvm_args.txt.
         # We pass 'nogui' so the server runs in the console without opening a Swing window.
-        if (Test-Path "run.bat") {
+        # start.bat (raw Fabric) and startserver.bat (ATM-style NeoForge, self-
+        # installing) already hardcode nogui themselves, so no extra arg there.
+        $launcherScript = Get-ModpackLauncherScript -InstancePath $PSScriptRoot
+        if ($launcherScript -eq "run.bat") {
             cmd /c run.bat nogui
         }
-        elseif (Test-Path "start.bat") {
-            cmd /c start.bat
+        elseif ($launcherScript) {
+            cmd /c $launcherScript
         }
         else {
-            Write-Error "UseModpackLauncher is true but I couldn't find run.bat/start.bat in $PSScriptRoot"
+            Write-Error "UseModpackLauncher is true but I couldn't find run.bat/start.bat/startserver.bat in $PSScriptRoot"
         }
     }
     else {

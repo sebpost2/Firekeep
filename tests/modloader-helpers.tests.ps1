@@ -117,3 +117,38 @@ Describe "Get-DetectedJavaVersion" {
 
     Remove-Item -Recurse -Force $root -ErrorAction SilentlyContinue
 }
+
+Describe "Get-ModpackLauncherScript" {
+
+    $root = Join-Path $env:TEMP ("launcher-fixture-" + [Guid]::NewGuid().ToString("N"))
+    New-Item -ItemType Directory -Force -Path $root | Out-Null
+
+    It "picks run.bat when present (modern Forge/NeoForge, e.g. Cave Horror Project)" {
+        $dir = Join-Path $root "has-runbat"
+        New-Item -ItemType Directory -Force -Path $dir | Out-Null
+        New-Item -ItemType File -Force -Path (Join-Path $dir "run.bat") | Out-Null
+        Get-ModpackLauncherScript -InstancePath $dir | Should Be "run.bat"
+    }
+
+    It "picks start.bat when there's no run.bat (raw Fabric, e.g. Cobblemon)" {
+        $dir = Join-Path $root "has-startbat"
+        New-Item -ItemType Directory -Force -Path $dir | Out-Null
+        New-Item -ItemType File -Force -Path (Join-Path $dir "start.bat") | Out-Null
+        Get-ModpackLauncherScript -InstancePath $dir | Should Be "start.bat"
+    }
+
+    It "picks startserver.bat when there's no run.bat or start.bat (ATM-style NeoForge, e.g. the ServerFiles packs)" {
+        $dir = Join-Path $root "has-startserverbat"
+        New-Item -ItemType Directory -Force -Path $dir | Out-Null
+        New-Item -ItemType File -Force -Path (Join-Path $dir "startserver.bat") | Out-Null
+        Get-ModpackLauncherScript -InstancePath $dir | Should Be "startserver.bat"
+    }
+
+    It "returns null when none of the known launcher scripts exist" {
+        $dir = Join-Path $root "empty"
+        New-Item -ItemType Directory -Force -Path $dir | Out-Null
+        Get-ModpackLauncherScript -InstancePath $dir | Should Be $null
+    }
+
+    Remove-Item -Recurse -Force $root -ErrorAction SilentlyContinue
+}
