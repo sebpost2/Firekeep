@@ -69,13 +69,33 @@ Describe "Get-ServerStatusView" {
     }
 }
 
-Describe "Get-PrimaryActionLabel" {
+Describe "Get-ActionButtonView" {
 
-    It "returns STOP SERVER when the server is running" {
-        Get-PrimaryActionLabel -IsRunning $true | Should Be "STOP SERVER"
+    It "returns START SERVER, enabled, when Stopped" {
+        $view = Get-ActionButtonView -State "Stopped"
+        $view.Label | Should Be "START SERVER"
+        $view.IsEnabled | Should Be $true
     }
 
-    It "returns START SERVER when the server is not running" {
-        Get-PrimaryActionLabel -IsRunning $false | Should Be "START SERVER"
+    It "returns CANCEL, enabled, when Starting (lets you abort a slow boot)" {
+        $view = Get-ActionButtonView -State "Starting"
+        $view.Label | Should Be "CANCEL"
+        $view.IsEnabled | Should Be $true
+    }
+
+    It "returns STOP SERVER, enabled, when Running" {
+        $view = Get-ActionButtonView -State "Running"
+        $view.Label | Should Be "STOP SERVER"
+        $view.IsEnabled | Should Be $true
+    }
+
+    It "returns STOPPING..., disabled, when Stopping (graceful stop can't be interrupted)" {
+        $view = Get-ActionButtonView -State "Stopping"
+        $view.Label | Should Be "STOPPING..."
+        $view.IsEnabled | Should Be $false
+    }
+
+    It "throws a clear error for an unrecognized state" {
+        { Get-ActionButtonView -State "Confused" } | Should Throw
     }
 }
