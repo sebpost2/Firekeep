@@ -15,6 +15,12 @@
 #   3. startserver.bat's "requires Java N" line (All-the-Mods-style NeoForge
 #      packs, which self-install NeoForge on first run and haven't produced
 #      a run.bat/variables.txt yet).
+#   4. A fabric-server-mc.<mcVersion>-loader...jar filename (the official
+#      Fabric installer's server jar - raw Fabric packs with no
+#      variables.txt).
+#   5. A forge-<mcVersion>-<forgeVersion>-installer.jar filename (raw Forge
+#      packs before the installer has ever been run, so there's no run.bat
+#      yet either).
 # Returns $null (never throws) when nothing recognizable is found, so the
 # caller can fall back to today's fully-manual run.config.ps1 behavior.
 function Get-DetectedJavaVersion {
@@ -37,6 +43,18 @@ function Get-DetectedJavaVersion {
     $startServerBatPath = Join-Path $InstancePath "startserver.bat"
     if (Test-Path $startServerBatPath) {
         $detected = Get-JavaVersionFromNeoForgeStartServerBat -Path $startServerBatPath
+        if ($detected) { return $detected }
+    }
+
+    $fabricJar = Get-ChildItem -Path $InstancePath -Filter "fabric-server-mc.*.jar" -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($fabricJar) {
+        $detected = Get-JavaVersionFromFabricServerJar -FileName $fabricJar.Name
+        if ($detected) { return $detected }
+    }
+
+    $forgeInstallerJar = Get-ChildItem -Path $InstancePath -Filter "forge-*-installer.jar" -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($forgeInstallerJar) {
+        $detected = Get-JavaVersionFromForgeInstallerJar -FileName $forgeInstallerJar.Name
         if ($detected) { return $detected }
     }
 
@@ -100,6 +118,37 @@ function Get-JavaVersionFromNeoForgeStartServerBat {
     $content = Get-Content -Path $Path -Raw -Encoding ascii
     if ($content -match 'requires Java\s+(\d+)') {
         return [int]$matches[1]
+    }
+    return $null
+}
+
+# The official Fabric installer names its server jar
+# "fabric-server-mc.<mcVersion>-loader.<loaderVersion>-launcher.<launcherVersion>.jar",
+# so raw Fabric packs (no ServerPackCreator variables.txt) reveal their
+# Minecraft version through the filename alone.
+function Get-JavaVersionFromFabricServerJar {
+    param(
+        [Parameter(Mandatory = $true)][string]$FileName
+    )
+
+    if ($FileName -match '^fabric-server-mc\.(\d+(?:\.\d+){1,2})-loader\.') {
+        try { return Get-JavaVersionForMinecraft -McVersion $matches[1] }
+        catch { return $null }
+    }
+    return $null
+}
+
+# Raw Forge packs ship their installer jar as
+# "forge-<mcVersion>-<forgeVersion>-installer.jar" and, before it's ever
+# been run, there's no run.bat yet to read the version from instead.
+function Get-JavaVersionFromForgeInstallerJar {
+    param(
+        [Parameter(Mandatory = $true)][string]$FileName
+    )
+
+    if ($FileName -match '^forge-(\d+(?:\.\d+){1,2})-[\d.]+-installer\.jar$') {
+        try { return Get-JavaVersionForMinecraft -McVersion $matches[1] }
+        catch { return $null }
     }
     return $null
 }

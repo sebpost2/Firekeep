@@ -86,6 +86,20 @@ Describe "Get-DetectedJavaVersion" {
         Get-DetectedJavaVersion -InstancePath $dir | Should Be 25
     }
 
+    It "detects raw Fabric from the official installer's server jar filename (Cobblemon's real jar)" {
+        $dir = Join-Path $root "raw-fabric-jar"
+        New-Item -ItemType Directory -Force -Path $dir | Out-Null
+        New-Item -ItemType File -Force -Path (Join-Path $dir "fabric-server-mc.1.21.1-loader.0.18.4-launcher.1.1.1.jar") | Out-Null
+        Get-DetectedJavaVersion -InstancePath $dir | Should Be 21
+    }
+
+    It "detects raw pre-install Forge from the installer jar filename, before run.bat exists (SkyFactory_5's real jar)" {
+        $dir = Join-Path $root "raw-forge-installer-jar"
+        New-Item -ItemType Directory -Force -Path $dir | Out-Null
+        New-Item -ItemType File -Force -Path (Join-Path $dir "forge-1.20.1-47.4.0-installer.jar") | Out-Null
+        Get-DetectedJavaVersion -InstancePath $dir | Should Be 17
+    }
+
     It "returns null when run.bat exists but doesn't match a recognized loader pattern" {
         $dir = Join-Path $root "custom-runbat"
         New-Item -ItemType Directory -Force -Path $dir | Out-Null
