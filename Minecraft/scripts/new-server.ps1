@@ -15,31 +15,15 @@ param(
 
 $mcRoot = Split-Path -Parent $PSScriptRoot
 $gsRoot = Split-Path -Parent $mcRoot
-$template = Join-Path $mcRoot "servers\_template"
-$dest = Join-Path $mcRoot "servers\$Name"
 . (Join-Path $gsRoot "_shared\scripts\console-ui.ps1")
+. (Join-Path $gsRoot "_shared\scripts\new-server-helpers.ps1")
 
-if (Test-Path $dest) {
-    Write-Error "A server named '$Name' already exists at $dest"
+try {
+    $dest = New-ServerFromTemplate -Name $Name -McRoot $mcRoot
+} catch {
+    Write-Error $_.Exception.Message
     exit 1
 }
-
-Copy-Item -Recurse -Path $template -Destination $dest
-
-# Pre-seed server.properties with RCON enabled and a random password OF ITS
-# OWN for this server. Minecraft fills in the rest of the keys on first
-# start and respects these. This way "Stop Server" works cleanly from day one.
-$bytes = New-Object byte[] 24
-[System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
-$rconPass = ([Convert]::ToBase64String($bytes)) -replace '[+/=]', ''
-
-$propsPath = Join-Path $dest "server.properties"
-@(
-    "#Minecraft server properties (pre-configured by new-server.ps1)"
-    "enable-rcon=true"
-    "rcon.port=25575"
-    "rcon.password=$rconPass"
-) | Set-Content -Path $propsPath -Encoding ascii
 
 Write-Host ""
 Write-UiSuccess "Server '$Name' created at $dest"
