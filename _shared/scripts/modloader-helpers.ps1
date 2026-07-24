@@ -12,6 +12,9 @@
 #      version spelled out directly).
 #   2. run.bat's Forge library path (modern Forge 1.17+, e.g.
 #      "libraries/net/minecraftforge/forge/1.20.1-47.4.20/win_args.txt").
+#   3. startserver.bat's "requires Java N" line (All-the-Mods-style NeoForge
+#      packs, which self-install NeoForge on first run and haven't produced
+#      a run.bat/variables.txt yet).
 # Returns $null (never throws) when nothing recognizable is found, so the
 # caller can fall back to today's fully-manual run.config.ps1 behavior.
 function Get-DetectedJavaVersion {
@@ -28,6 +31,12 @@ function Get-DetectedJavaVersion {
     $runBatPath = Join-Path $InstancePath "run.bat"
     if (Test-Path $runBatPath) {
         $detected = Get-JavaVersionFromForgeRunBat -Path $runBatPath
+        if ($detected) { return $detected }
+    }
+
+    $startServerBatPath = Join-Path $InstancePath "startserver.bat"
+    if (Test-Path $startServerBatPath) {
+        $detected = Get-JavaVersionFromNeoForgeStartServerBat -Path $startServerBatPath
         if ($detected) { return $detected }
     }
 
@@ -74,6 +83,23 @@ function Get-JavaVersionFromForgeRunBat {
     if ($content -match 'libraries[/\\]net[/\\]minecraftforge[/\\]forge[/\\](\d+(?:\.\d+){1,2})-') {
         try { return Get-JavaVersionForMinecraft -McVersion $matches[1] }
         catch { return $null }
+    }
+    return $null
+}
+
+# All-the-Mods-style NeoForge packs ship a startserver.bat that downloads
+# and runs the NeoForge installer on first launch, so there's no run.bat or
+# variables.txt to read yet. The script itself already states the Java
+# requirement in plain text (e.g. "Minecraft 1.21 requires Java 21"), so
+# that's read directly instead of re-deriving it from a version table.
+function Get-JavaVersionFromNeoForgeStartServerBat {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path
+    )
+
+    $content = Get-Content -Path $Path -Raw -Encoding ascii
+    if ($content -match 'requires Java\s+(\d+)') {
+        return [int]$matches[1]
     }
     return $null
 }

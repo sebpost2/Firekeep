@@ -45,6 +45,47 @@ Describe "Get-DetectedJavaVersion" {
         Get-DetectedJavaVersion -InstancePath $dir | Should Be 17
     }
 
+    It "detects Forge from run.bat with a 3-segment forge version (DeceasedCraft's real format)" {
+        $dir = Join-Path $root "raw-forge-3seg"
+        New-Item -ItemType Directory -Force -Path $dir | Out-Null
+        @(
+            "@echo off"
+            "java @user_jvm_args.txt @libraries/net/minecraftforge/forge/1.20.1-47.4.0/win_args.txt %*"
+            "pause"
+        ) | Set-Content -Path (Join-Path $dir "run.bat") -Encoding ascii
+        Get-DetectedJavaVersion -InstancePath $dir | Should Be 17
+    }
+
+    It "reads the Java version straight from an ATM-style startserver.bat (e.g. 'Minecraft 1.21 requires Java 21')" {
+        $dir = Join-Path $root "neoforge-startserver-atm10"
+        New-Item -ItemType Directory -Force -Path $dir | Out-Null
+        @(
+            '@echo off'
+            'set NEOFORGE_VERSION=21.1.234'
+            '"%ATM10_JAVA%" -version 1>nul 2>nul || ('
+            '   echo Minecraft 1.21 requires Java 21 - Java not found'
+            '   pause'
+            '   exit /b 1'
+            ')'
+        ) | Set-Content -Path (Join-Path $dir "startserver.bat") -Encoding ascii
+        Get-DetectedJavaVersion -InstancePath $dir | Should Be 21
+    }
+
+    It "reads the Java version from a startserver.bat requiring a newer Java (e.g. 'Minecraft 26.1.2 requires Java 25')" {
+        $dir = Join-Path $root "neoforge-startserver-atm11"
+        New-Item -ItemType Directory -Force -Path $dir | Out-Null
+        @(
+            '@echo off'
+            'set NEOFORGE_VERSION=26.1.2.78'
+            '"%ATM11_JAVA%" -version 1>nul 2>nul || ('
+            '   echo Minecraft 26.1.2 requires Java 25 - Java not found'
+            '   pause'
+            '   exit /b 1'
+            ')'
+        ) | Set-Content -Path (Join-Path $dir "startserver.bat") -Encoding ascii
+        Get-DetectedJavaVersion -InstancePath $dir | Should Be 25
+    }
+
     It "returns null when run.bat exists but doesn't match a recognized loader pattern" {
         $dir = Join-Path $root "custom-runbat"
         New-Item -ItemType Directory -Force -Path $dir | Out-Null
