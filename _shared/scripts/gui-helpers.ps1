@@ -76,3 +76,19 @@ function Get-ServerLifecycleState {
     if ($IsRunning) { return "Running" }
     return "Stopped"
 }
+
+# Kills a process and everything it spawned (children first, so a hard kill
+# of the launcher doesn't orphan the java/playit processes underneath it).
+# Used to abort a server that's still starting (before RCON is even up, so
+# there's no graceful "stop" command to send yet). I/O boundary, not unit
+# tested, same convention as Test-PortOpen/Get-ListenerPid in rcon.ps1.
+function Stop-ProcessTree {
+    param(
+        [Parameter(Mandatory = $true)][int]$ProcessId
+    )
+    $children = Get-CimInstance Win32_Process -Filter "ParentProcessId = $ProcessId" -ErrorAction SilentlyContinue
+    foreach ($child in $children) {
+        Stop-ProcessTree -ProcessId $child.ProcessId
+    }
+    Stop-Process -Id $ProcessId -Force -ErrorAction SilentlyContinue
+}
