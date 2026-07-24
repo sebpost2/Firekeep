@@ -165,10 +165,7 @@ $copyButton.Add_Click({
 })
 
 $mapsButton.Add_Click({
-    Start-Process -FilePath "powershell.exe" -ArgumentList @(
-        "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
-        "`"$(Join-Path $root 'Minecraft\scripts\worlds.ps1')`""
-    )
+    & (Join-Path $root "Start-ManageMapsGui.ps1") -InstancePath $script:selected.Path -InstanceName $script:selected.Name -GsRoot $root -Owner $window
 })
 
 $setupTunnelButton.Add_Click({

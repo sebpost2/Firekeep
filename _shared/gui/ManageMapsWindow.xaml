@@ -1,0 +1,106 @@
+<Window
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="Manage Maps" Width="440" Height="580"
+    ResizeMode="CanMinimize" WindowStartupLocation="CenterOwner" Background="#1B211C">
+
+    <Window.Resources>
+        <SolidColorBrush x:Key="PanelBrush" Color="#262E27"/>
+        <SolidColorBrush x:Key="TextBrush" Color="#EDE6D6"/>
+        <SolidColorBrush x:Key="MutedTextBrush" Color="#8C9389"/>
+        <SolidColorBrush x:Key="AccentBrush" Color="#E0813F"/>
+        <SolidColorBrush x:Key="DangerBrush" Color="#B4472B"/>
+        <SolidColorBrush x:Key="OnlineBrush" Color="#8FAE63"/>
+
+        <Style x:Key="ToolButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="{StaticResource PanelBrush}"/>
+            <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+            <Setter Property="FontFamily" Value="Segoe UI"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Padding" Value="10,7"/>
+            <Setter Property="Margin" Value="0,0,6,0"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}" CornerRadius="4">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <Trigger Property="IsEnabled" Value="False">
+                    <Setter Property="Opacity" Value="0.4"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style TargetType="ListBoxItem">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListBoxItem">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="4">
+                            <ContentPresenter/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#33E0813F"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <DataTemplate x:Key="WorldItemTemplate">
+            <Border Background="{StaticResource PanelBrush}" CornerRadius="4" Margin="0,0,0,6" Padding="10,8">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0">
+                        <TextBlock Text="{Binding Name}" Foreground="{StaticResource TextBrush}" FontSize="14" FontWeight="SemiBold"/>
+                        <TextBlock Text="{Binding SizeLabel}" Foreground="{StaticResource MutedTextBrush}" FontSize="11" Margin="0,2,0,0"/>
+                    </StackPanel>
+                    <TextBlock Grid.Column="1" Text="{Binding BadgeText}" Foreground="{StaticResource OnlineBrush}"
+                               VerticalAlignment="Center" FontSize="11" FontFamily="Consolas" FontWeight="Bold"/>
+                </Grid>
+            </Border>
+        </DataTemplate>
+    </Window.Resources>
+
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <TextBlock Grid.Row="0" x:Name="TitleText" Text="MANAGE MAPS" Foreground="{StaticResource TextBrush}"
+                   FontFamily="Segoe UI Black" FontSize="20"/>
+        <TextBlock Grid.Row="1" x:Name="SubtitleText" Text="" Foreground="{StaticResource MutedTextBrush}"
+                   FontFamily="Segoe UI" FontSize="12" Margin="0,2,0,14"/>
+
+        <ListBox Grid.Row="2" x:Name="WorldsList" Background="Transparent" BorderThickness="0"
+                  ItemTemplate="{StaticResource WorldItemTemplate}" ScrollViewer.HorizontalScrollBarVisibility="Disabled"/>
+
+        <TextBlock Grid.Row="3" x:Name="HintText" Text=" " Foreground="{StaticResource MutedTextBrush}"
+                   FontFamily="Segoe UI" FontSize="11" Margin="0,8,0,8"/>
+
+        <StackPanel Grid.Row="4" Orientation="Horizontal" HorizontalAlignment="Left">
+            <Button x:Name="SwitchButton" Content="Switch active" Style="{StaticResource ToolButtonStyle}"/>
+            <Button x:Name="NewButton" Content="New world" Style="{StaticResource ToolButtonStyle}"/>
+            <Button x:Name="ImportButton" Content="Import .zip" Style="{StaticResource ToolButtonStyle}"/>
+            <Button x:Name="DeleteButton" Content="Send to trash" Style="{StaticResource ToolButtonStyle}"
+                    Background="{StaticResource DangerBrush}" Foreground="{StaticResource TextBrush}"/>
+            <Button x:Name="TrashToggleButton" Content="View trash" Style="{StaticResource ToolButtonStyle}" Margin="6,0,0,0"/>
+        </StackPanel>
+    </Grid>
+</Window>
