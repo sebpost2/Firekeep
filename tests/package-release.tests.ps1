@@ -4,10 +4,12 @@ Describe "Get-ReleaseFiles" {
 
     $fixtureRoot = Join-Path $env:TEMP ("release-fixture-" + [Guid]::NewGuid().ToString("N"))
     $paths = @(
-        "Start.bat", "Start.ps1", "Start-Gui.ps1", "Start-ManageMapsGui.ps1", "Start-AddModpackGui.ps1",
+        "Start.bat", "Start.ps1", "Start-Gui.ps1",
         "Stop Server.bat", "README.md", ".gitignore",
         "_shared\scripts\rcon.ps1",
         "_shared\gui\MainWindow.xaml",
+        "_shared\gui\ManageMapsScreen.xaml",
+        "_shared\gui\AddServerScreen.xaml",
         "_shared\tools\mrpack.exe",
         "_shared\tools\playit\secret.key",
         "_shared\tools\playit\address.txt",
@@ -37,9 +39,9 @@ Describe "Get-ReleaseFiles" {
         ($result -contains (Join-Path $fixtureRoot "_shared\gui\MainWindow.xaml")) | Should Be $true
     }
 
-    It "includes the Manage Maps and Add Server GUI entry points" {
-        ($result -contains (Join-Path $fixtureRoot "Start-ManageMapsGui.ps1")) | Should Be $true
-        ($result -contains (Join-Path $fixtureRoot "Start-AddModpackGui.ps1")) | Should Be $true
+    It "includes the Manage Maps and Add Server screen markup" {
+        ($result -contains (Join-Path $fixtureRoot "_shared\gui\ManageMapsScreen.xaml")) | Should Be $true
+        ($result -contains (Join-Path $fixtureRoot "_shared\gui\AddServerScreen.xaml")) | Should Be $true
     }
 
     It "includes the generic _template" {

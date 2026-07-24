@@ -29,7 +29,7 @@ function Test-PortOpen {
     param(
         [string]$RconHost = "127.0.0.1",
         [Parameter(Mandatory = $true)][int]$Port,
-        [int]$TimeoutMs = 800
+        [int]$TimeoutMs = 150
     )
     $client = New-Object System.Net.Sockets.TcpClient
     try {

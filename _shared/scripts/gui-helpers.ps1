@@ -77,6 +77,66 @@ function Get-ServerLifecycleState {
     return "Stopped"
 }
 
+# Window size for each in-window screen, so the shell window can resize
+# itself to fit whichever screen is showing (Home/ManageMaps/AddServer share
+# one Window now instead of each being its own popup).
+function Get-ScreenSize {
+    param(
+        [Parameter(Mandatory = $true)][string]$Screen
+    )
+    switch ($Screen) {
+        "Home"       { return [PSCustomObject]@{ Width = 420; Height = 660 } }
+        "ManageMaps" { return [PSCustomObject]@{ Width = 440; Height = 580 } }
+        "AddServer"  { return [PSCustomObject]@{ Width = 440; Height = 500 } }
+        "Console"    { return [PSCustomObject]@{ Width = 560; Height = 640 } }
+        default { throw "Unrecognized screen '$Screen'." }
+    }
+}
+
+# Where the back arrow on a screen returns to. Flat two-level navigation -
+# Home is the root and has no back target; everything else returns to Home.
+function Get-BackTarget {
+    param(
+        [Parameter(Mandatory = $true)][string]$Screen
+    )
+    switch ($Screen) {
+        "Home"       { return $null }
+        "ManageMaps" { return "Home" }
+        "AddServer"  { return "Home" }
+        "Console"    { return "Home" }
+        default { throw "Unrecognized screen '$Screen'." }
+    }
+}
+
+# Incrementally reads whatever's been appended to a log file since the last
+# read, so the Console screen's log tail doesn't re-read (and re-render) the
+# whole file every tick as it grows over a long session. If the offset is
+# past the current length (file was rotated/truncated) or the file doesn't
+# exist yet, it just starts over from the beginning.
+function Get-LogTailChunk {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][int64]$Offset
+    )
+    if (-not (Test-Path $Path)) {
+        return [PSCustomObject]@{ Text = ""; Offset = 0 }
+    }
+    try {
+        $stream = [System.IO.File]::Open($Path, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
+        try {
+            $startOffset = if ($Offset -gt $stream.Length) { 0 } else { $Offset }
+            $stream.Seek($startOffset, [System.IO.SeekOrigin]::Begin) | Out-Null
+            $reader = New-Object System.IO.StreamReader($stream, [System.Text.Encoding]::ASCII)
+            $text = $reader.ReadToEnd()
+            return [PSCustomObject]@{ Text = $text; Offset = $stream.Length }
+        } finally {
+            $stream.Close()
+        }
+    } catch {
+        return [PSCustomObject]@{ Text = ""; Offset = $Offset }
+    }
+}
+
 # Kills a process and everything it spawned (children first, so a hard kill
 # of the launcher doesn't orphan the java/playit processes underneath it).
 # Used to abort a server that's still starting (before RCON is even up, so

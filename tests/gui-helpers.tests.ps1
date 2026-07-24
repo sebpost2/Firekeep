@@ -126,3 +126,107 @@ Describe "Get-ServerLifecycleState" {
         Get-ServerLifecycleState -IsRunning $false -PendingStart $false -PendingStop $false | Should Be "Stopped"
     }
 }
+
+Describe "Get-ScreenSize" {
+
+    It "returns the Home screen size" {
+        $s = Get-ScreenSize -Screen "Home"
+        $s.Width | Should Be 420
+        $s.Height | Should Be 660
+    }
+
+    It "returns the Manage Maps screen size" {
+        $s = Get-ScreenSize -Screen "ManageMaps"
+        $s.Width | Should Be 440
+        $s.Height | Should Be 580
+    }
+
+    It "returns the Add Server screen size" {
+        $s = Get-ScreenSize -Screen "AddServer"
+        $s.Width | Should Be 440
+        $s.Height | Should Be 500
+    }
+
+    It "returns the Console screen size" {
+        $s = Get-ScreenSize -Screen "Console"
+        $s.Width | Should Be 560
+        $s.Height | Should Be 640
+    }
+
+    It "throws a clear error for an unrecognized screen" {
+        { Get-ScreenSize -Screen "Confused" } | Should Throw
+    }
+}
+
+Describe "Get-BackTarget" {
+
+    It "returns null for Home, since it's the root screen with no back arrow" {
+        Get-BackTarget -Screen "Home" | Should Be $null
+    }
+
+    It "returns Home as the back target from Manage Maps" {
+        Get-BackTarget -Screen "ManageMaps" | Should Be "Home"
+    }
+
+    It "returns Home as the back target from Add Server" {
+        Get-BackTarget -Screen "AddServer" | Should Be "Home"
+    }
+
+    It "returns Home as the back target from Console" {
+        Get-BackTarget -Screen "Console" | Should Be "Home"
+    }
+
+    It "throws a clear error for an unrecognized screen" {
+        { Get-BackTarget -Screen "Confused" } | Should Throw
+    }
+}
+
+Describe "Get-LogTailChunk" {
+
+    $root = Join-Path $env:TEMP ("log-tail-fixture-" + [Guid]::NewGuid().ToString("N"))
+    New-Item -ItemType Directory -Force -Path $root | Out-Null
+
+    It "returns empty text and offset 0 when the log file doesn't exist yet" {
+        $missing = Join-Path $root "does-not-exist.log"
+        $chunk = Get-LogTailChunk -Path $missing -Offset 0
+        $chunk.Text | Should Be ""
+        $chunk.Offset | Should Be 0
+    }
+
+    It "reads the whole file on a first read from offset 0" {
+        $logPath = Join-Path $root "fresh.log"
+        Set-Content -Path $logPath -Value "line one`r`nline two" -NoNewline -Encoding ascii
+        $chunk = Get-LogTailChunk -Path $logPath -Offset 0
+        $chunk.Text | Should Be "line one`r`nline two"
+        $chunk.Offset | Should Be (Get-Item $logPath).Length
+    }
+
+    It "returns only the bytes appended since the given offset" {
+        $logPath = Join-Path $root "growing.log"
+        Set-Content -Path $logPath -Value "first" -NoNewline -Encoding ascii
+        $firstChunk = Get-LogTailChunk -Path $logPath -Offset 0
+        Add-Content -Path $logPath -Value "second" -NoNewline -Encoding ascii
+        $secondChunk = Get-LogTailChunk -Path $logPath -Offset $firstChunk.Offset
+        $secondChunk.Text | Should Be "second"
+        $secondChunk.Offset | Should Be (Get-Item $logPath).Length
+    }
+
+    It "restarts from the beginning when the offset is past the current file length (log was rotated/truncated)" {
+        $logPath = Join-Path $root "rotated.log"
+        Set-Content -Path $logPath -Value "short" -NoNewline -Encoding ascii
+        $chunk = Get-LogTailChunk -Path $logPath -Offset 99999
+        $chunk.Text | Should Be "short"
+        $chunk.Offset | Should Be (Get-Item $logPath).Length
+    }
+
+    It "returns an unchanged chunk when nothing new has been written" {
+        $logPath = Join-Path $root "idle.log"
+        Set-Content -Path $logPath -Value "steady" -NoNewline -Encoding ascii
+        $firstChunk = Get-LogTailChunk -Path $logPath -Offset 0
+        $secondChunk = Get-LogTailChunk -Path $logPath -Offset $firstChunk.Offset
+        $secondChunk.Text | Should Be ""
+        $secondChunk.Offset | Should Be $firstChunk.Offset
+    }
+
+    Remove-Item -Recurse -Force $root -ErrorAction SilentlyContinue
+}
