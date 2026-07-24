@@ -99,3 +99,30 @@ Describe "Get-ActionButtonView" {
         { Get-ActionButtonView -State "Confused" } | Should Throw
     }
 }
+
+Describe "Get-ServerLifecycleState" {
+
+    It "is Starting while a launch is pending and the port isn't up yet" {
+        Get-ServerLifecycleState -IsRunning $false -PendingStart $true -PendingStop $false | Should Be "Starting"
+    }
+
+    It "settles to Running once a pending launch's port comes up" {
+        Get-ServerLifecycleState -IsRunning $true -PendingStart $true -PendingStop $false | Should Be "Running"
+    }
+
+    It "is Stopping while a graceful stop is pending and the port is still up" {
+        Get-ServerLifecycleState -IsRunning $true -PendingStart $false -PendingStop $true | Should Be "Stopping"
+    }
+
+    It "settles to Stopped once a pending stop's port goes down" {
+        Get-ServerLifecycleState -IsRunning $false -PendingStart $false -PendingStop $true | Should Be "Stopped"
+    }
+
+    It "is Running when the port is up with nothing pending" {
+        Get-ServerLifecycleState -IsRunning $true -PendingStart $false -PendingStop $false | Should Be "Running"
+    }
+
+    It "is Stopped when the port is down with nothing pending" {
+        Get-ServerLifecycleState -IsRunning $false -PendingStart $false -PendingStop $false | Should Be "Stopped"
+    }
+}
