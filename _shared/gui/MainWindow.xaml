@@ -183,6 +183,8 @@
         <StackPanel Grid.Row="6" Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,4,0,0">
             <Button x:Name="MapsButton" Content="Manage Maps" Style="{StaticResource LinkButtonStyle}"/>
             <TextBlock Text="|" Foreground="{StaticResource MutedTextBrush}" VerticalAlignment="Center" Margin="4,0"/>
+            <Button x:Name="NewServerButton" Content="New Server" Style="{StaticResource LinkButtonStyle}"/>
+            <TextBlock Text="|" Foreground="{StaticResource MutedTextBrush}" VerticalAlignment="Center" Margin="4,0"/>
             <Button x:Name="SetupTunnelButton" Content="Set up sharing (playit.gg)" Style="{StaticResource LinkButtonStyle}"/>
         </StackPanel>
     </Grid>

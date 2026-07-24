@@ -4,7 +4,8 @@ Describe "Get-ReleaseFiles" {
 
     $fixtureRoot = Join-Path $env:TEMP ("release-fixture-" + [Guid]::NewGuid().ToString("N"))
     $paths = @(
-        "Start.bat", "Start.ps1", "Start-Gui.ps1", "Stop Server.bat", "README.md", ".gitignore",
+        "Start.bat", "Start.ps1", "Start-Gui.ps1", "Start-ManageMapsGui.ps1", "Start-AddModpackGui.ps1",
+        "Stop Server.bat", "README.md", ".gitignore",
         "_shared\scripts\rcon.ps1",
         "_shared\gui\MainWindow.xaml",
         "_shared\tools\mrpack.exe",
@@ -34,6 +35,11 @@ Describe "Get-ReleaseFiles" {
     It "includes the GUI launcher and its window markup" {
         ($result -contains (Join-Path $fixtureRoot "Start-Gui.ps1")) | Should Be $true
         ($result -contains (Join-Path $fixtureRoot "_shared\gui\MainWindow.xaml")) | Should Be $true
+    }
+
+    It "includes the Manage Maps and Add Server GUI entry points" {
+        ($result -contains (Join-Path $fixtureRoot "Start-ManageMapsGui.ps1")) | Should Be $true
+        ($result -contains (Join-Path $fixtureRoot "Start-AddModpackGui.ps1")) | Should Be $true
     }
 
     It "includes the generic _template" {

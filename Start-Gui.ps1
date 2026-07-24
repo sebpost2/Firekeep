@@ -15,13 +15,7 @@ $root = $PSScriptRoot
 
 Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase
 
-$instances = @(Get-ServerInstances -Root $root)
-if ($instances.Count -eq 0) {
-    [System.Windows.MessageBox]::Show(
-        "No server created yet.`n`nRun Minecraft\scripts\new-server.ps1 to create one first.",
-        "Game Servers", "OK", "Warning") | Out-Null
-    exit 0
-}
+$script:instances = @(Get-ServerInstances -Root $root)
 
 [xml]$xamlXml = Get-Content -Path (Join-Path $root "_shared\gui\MainWindow.xaml") -Raw
 $window = [Windows.Markup.XamlReader]::Load((New-Object System.Xml.XmlNodeReader $xamlXml))
@@ -34,19 +28,54 @@ $copyButton       = $window.FindName("CopyButton")
 $actionButton     = $window.FindName("ActionButton")
 $hintText         = $window.FindName("HintText")
 $mapsButton       = $window.FindName("MapsButton")
+$newServerButton  = $window.FindName("NewServerButton")
 $setupTunnelButton = $window.FindName("SetupTunnelButton")
 
-foreach ($i in $instances) { $serverCombo.Items.Add("$($i.Game) - $($i.Name)") | Out-Null }
-$serverCombo.SelectedIndex = 0
-
-$script:selected        = $instances[0]
+$script:selected        = $null
 $script:pendingStart    = $false
 $script:pendingStop     = $false
 $script:launchedProcess = $null  # the start-with-tunnel.ps1 wrapper process, for Cancel
 $script:closingApp      = $false # true once Window.Closing has taken over to stop the server
 $script:okToClose       = $false # set right before we let the real close happen
 
+# (Re)builds the server picker from $script:instances. Used at startup and
+# after "New Server" creates one, so the new server shows up without a
+# restart. Keeps the previously selected instance selected when possible.
+function Refresh-ServerList {
+    param([string]$PreferName)
+
+    $serverCombo.Items.Clear()
+    foreach ($i in $script:instances) { $serverCombo.Items.Add("$($i.Game) - $($i.Name)") | Out-Null }
+
+    $hasServers = $script:instances.Count -gt 0
+    $mapsButton.IsEnabled = $hasServers
+    $serverCombo.IsEnabled = $hasServers
+    $actionButton.IsEnabled = $hasServers
+
+    if (-not $hasServers) {
+        $script:selected = $null
+        $statusLabel.Text = "---"
+        $fireIcon.Opacity = 0.25
+        $addressText.Text = "-"
+        $copyButton.IsEnabled = $false
+        $actionButton.Content = "START SERVER"
+        $hintText.Text = "No server yet - click New Server to create one."
+        return
+    }
+
+    $index = 0
+    if ($PreferName) {
+        $found = 0..($script:instances.Count - 1) | Where-Object { $script:instances[$_].Name -eq $PreferName } | Select-Object -First 1
+        if ($null -ne $found) { $index = $found }
+    }
+    $serverCombo.SelectedIndex = $index
+    $script:selected = $script:instances[$index]
+}
+
+Refresh-ServerList
+
 function Get-SelectedRconPort {
+    if (-not $script:selected) { return $null }
     $props = Read-ServerProperties (Join-Path $script:selected.Path "server.properties")
     if ($props["rcon.port"]) { return [int]$props["rcon.port"] }
     return 25575
@@ -89,6 +118,7 @@ function Update-AddressDisplay {
 # reports the settled lifecycle state so callers (click handler, closing
 # handler, timer) can react to transitions completing.
 function Sync-StatusDisplay {
+    if (-not $script:selected) { return "Stopped" }
     $running = Test-PortOpen -Port (Get-SelectedRconPort)
     $view = Get-ServerStatusView -IsRunning $running
     $statusLabel.Text = $view.Label
@@ -113,7 +143,7 @@ function Sync-StatusDisplay {
 
 $serverCombo.Add_SelectionChanged({
     if ($serverCombo.SelectedIndex -lt 0) { return }
-    $script:selected = $instances[$serverCombo.SelectedIndex]
+    $script:selected = $script:instances[$serverCombo.SelectedIndex]
     $script:pendingStart = $false
     $script:pendingStop = $false
     Sync-StatusDisplay | Out-Null
@@ -121,6 +151,7 @@ $serverCombo.Add_SelectionChanged({
 })
 
 $actionButton.Add_Click({
+    if (-not $script:selected) { return }
     $state = Get-ServerLifecycleState -IsRunning (Test-PortOpen -Port (Get-SelectedRconPort)) -PendingStart $script:pendingStart -PendingStop $script:pendingStop
 
     if ($state -eq "Starting") {
@@ -165,7 +196,18 @@ $copyButton.Add_Click({
 })
 
 $mapsButton.Add_Click({
+    if (-not $script:selected) { return }
     & (Join-Path $root "Start-ManageMapsGui.ps1") -InstancePath $script:selected.Path -InstanceName $script:selected.Name -GsRoot $root -Owner $window
+})
+
+$newServerButton.Add_Click({
+    $mcRoot = Join-Path $root "Minecraft"
+    $createdName = & (Join-Path $root "Start-AddModpackGui.ps1") -McRoot $mcRoot -GsRoot $root -Owner $window
+    if ($createdName) {
+        $script:instances = @(Get-ServerInstances -Root $root)
+        Refresh-ServerList -PreferName $createdName
+        Update-AddressDisplay
+    }
 })
 
 $setupTunnelButton.Add_Click({
@@ -182,6 +224,7 @@ $setupTunnelButton.Add_Click({
 $window.Add_Closing({
     param($sender, $e)
     if ($script:okToClose) { return }
+    if (-not $script:selected) { $script:okToClose = $true; return }
 
     $running = Test-PortOpen -Port (Get-SelectedRconPort)
     $state = Get-ServerLifecycleState -IsRunning $running -PendingStart $script:pendingStart -PendingStop $script:pendingStop
