@@ -4,8 +4,8 @@ Describe "Get-ReleaseFiles" {
 
     $fixtureRoot = Join-Path $env:TEMP ("release-fixture-" + [Guid]::NewGuid().ToString("N"))
     $paths = @(
-        "Start.bat", "Start.ps1", "Start-Gui.ps1",
-        "Stop Server.bat", "README.md", ".gitignore",
+        "Start.bat", "Start-Gui.ps1",
+        "README.md", ".gitignore",
         "_shared\scripts\rcon.ps1",
         "_shared\gui\MainWindow.xaml",
         "_shared\gui\ManageMapsScreen.xaml",
@@ -13,7 +13,7 @@ Describe "Get-ReleaseFiles" {
         "_shared\tools\mrpack.exe",
         "_shared\tools\playit\secret.key",
         "_shared\tools\playit\address.txt",
-        "Minecraft\scripts\new-server.ps1",
+        "Minecraft\scripts\install-java.ps1",
         "Minecraft\servers\_template\run.config.ps1",
         "Minecraft\servers\Cave Horror Project\ops.json",
         "Minecraft\servers\Cave Horror Project\world\level.dat",
@@ -31,7 +31,7 @@ Describe "Get-ReleaseFiles" {
 
     It "includes the framework menu and scripts" {
         ($result -contains (Join-Path $fixtureRoot "Start.bat")) | Should Be $true
-        ($result -contains (Join-Path $fixtureRoot "Minecraft\scripts\new-server.ps1")) | Should Be $true
+        ($result -contains (Join-Path $fixtureRoot "Minecraft\scripts\install-java.ps1")) | Should Be $true
     }
 
     It "includes the GUI launcher and its window markup" {

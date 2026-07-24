@@ -596,11 +596,22 @@ $sendButton          = $consoleRoot.FindName("SendButton")
 
 $script:logOffset = 0
 $script:rconJob = $null
+$script:rconJobServerPath = $null
+$script:consoleServerPath = $null
 $MaxConsoleLines = 2000
 
+# Only clear the log view and re-read from the start when switching to a
+# DIFFERENT server. Re-entering Console for the same server keeps the
+# existing offset/text, so it doesn't re-read (and re-render) the whole
+# log file from scratch on every visit - for a long-running server that
+# full re-read/render was blocking the UI thread, the same class of
+# freeze already fixed once this session for Test-PortOpen.
 function Enter-ConsoleScreen {
-    $script:logOffset = 0
-    $logText.Text = ""
+    if ($script:selected.Path -ne $script:consoleServerPath) {
+        $script:logOffset = 0
+        $logText.Text = ""
+        $script:consoleServerPath = $script:selected.Path
+    }
     $consoleSubtitleText.Text = $script:selected.Name
     $commandBox.Text = ""
     $logTailTimer.Start()
@@ -625,6 +636,7 @@ function Send-ConsoleCommand {
     $commandBox.IsEnabled = $false
     $sendButton.IsEnabled = $false
 
+    $script:rconJobServerPath = $script:selected.Path
     $script:rconJob = Start-Job -ScriptBlock {
         param($GsRoot, $Port, $Password, $Command)
         . (Join-Path $GsRoot "_shared\scripts\rcon.ps1")
@@ -680,15 +692,20 @@ $rconJobTimer.Interval = [TimeSpan]::FromMilliseconds(300)
 $rconJobTimer.Add_Tick({
     if (-not $script:rconJob -or $script:rconJob.State -eq "Running" -or $script:rconJob.State -eq "NotStarted") { return }
 
+    # If you sent a command, then navigated to a different server before the
+    # response came back, don't let it land in that other server's log view.
+    $sameServer = $script:selected -and ($script:selected.Path -eq $script:rconJobServerPath)
+
     if ($script:rconJob.State -eq "Completed") {
         $response = Receive-Job $script:rconJob
-        if ($response) { $logText.AppendText("$response`r`n") }
+        if ($response -and $sameServer) { $logText.AppendText("$response`r`n") }
     } else {
         $reason = $script:rconJob.ChildJobs[0].JobStateInfo.Reason.Message
-        $logText.AppendText("Error: $reason`r`n")
+        if ($sameServer) { $logText.AppendText("Error: $reason`r`n") }
     }
     Remove-Job $script:rconJob -Force -ErrorAction SilentlyContinue
     $script:rconJob = $null
+    if (-not $sameServer) { return }
     $logText.ScrollToEnd()
     $commandBox.Focus() | Out-Null
 })

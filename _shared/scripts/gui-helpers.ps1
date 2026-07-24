@@ -126,7 +126,11 @@ function Get-LogTailChunk {
         try {
             $startOffset = if ($Offset -gt $stream.Length) { 0 } else { $Offset }
             $stream.Seek($startOffset, [System.IO.SeekOrigin]::Begin) | Out-Null
-            $reader = New-Object System.IO.StreamReader($stream, [System.Text.Encoding]::ASCII)
+            # UTF-8, not ASCII: player chat/usernames in the log can contain
+            # non-ASCII characters (accents, emoji, other scripts), which
+            # ASCII would silently mangle into '?'.
+            $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+            $reader = New-Object System.IO.StreamReader($stream, $utf8NoBom)
             $text = $reader.ReadToEnd()
             return [PSCustomObject]@{ Text = $text; Offset = $stream.Length }
         } finally {

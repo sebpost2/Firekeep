@@ -22,8 +22,7 @@ function Get-ReleaseFiles {
     )
 
     $include = @(
-        "Start.bat", "Start.ps1", "Start-Gui.ps1",
-        "Stop Server.bat", "Manage Maps.bat", "My Address.bat", "View Tailscale IP.bat",
+        "Start.bat", "Start-Gui.ps1",
         "README.md", ".gitignore",
         "_shared\gui",
         "_shared\scripts",

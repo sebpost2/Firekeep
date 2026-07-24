@@ -4,6 +4,19 @@
 . (Join-Path $PSScriptRoot "run.config.ps1")
 
 $mcRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+$gsRoot = Split-Path -Parent $mcRoot
+
+# For servers set up by hand (CurseForge "Server Files" copied in, no
+# .mrpack metadata to read $JavaVersion from): try to detect the right Java
+# version from whatever got copied in, so run.config.ps1's default/manually
+# set value only has to be right when detection can't figure it out itself.
+. (Join-Path $gsRoot "_shared\scripts\modloader-helpers.ps1")
+$detectedJavaVersion = Get-DetectedJavaVersion -InstancePath $PSScriptRoot
+if ($detectedJavaVersion -and $detectedJavaVersion -ne $JavaVersion) {
+    Write-Host "Detected Java $detectedJavaVersion from the modpack files (run.config.ps1 says $JavaVersion) - using $detectedJavaVersion for this start."
+    $JavaVersion = $detectedJavaVersion
+}
+
 $javaHome = Join-Path $mcRoot "tools\java\$JavaVersion"
 $javaBin = Join-Path $javaHome "bin"
 
