@@ -145,6 +145,45 @@
                 </Trigger>
             </Style.Triggers>
         </Style>
+        <Style x:Key="LinkButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="{StaticResource MutedTextBrush}"/>
+            <Setter Property="FontFamily" Value="Segoe UI"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Grid>
+                            <Border x:Name="Bd" Background="Transparent" CornerRadius="4"/>
+                            <Border x:Name="HoverOverlay" Background="#1AE0813F" CornerRadius="4" Opacity="0"/>
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Margin="8,4"
+                                               TextElement.Foreground="{TemplateBinding Foreground}"/>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Foreground" Value="{StaticResource AccentBrush}"/>
+                                <Trigger.EnterActions>
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetName="HoverOverlay" Storyboard.TargetProperty="Opacity" To="1" Duration="0:0:0.15"/>
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </Trigger.EnterActions>
+                                <Trigger.ExitActions>
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetName="HoverOverlay" Storyboard.TargetProperty="Opacity" To="0" Duration="0:0:0.1"/>
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </Trigger.ExitActions>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
         <Style x:Key="BrowseButtonStyle" TargetType="Button">
             <Setter Property="Background" Value="{StaticResource PanelElevatedBrush}"/>
             <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
@@ -217,14 +256,35 @@
     <TextBlock Grid.Row="1" Text="Server name" Style="{StaticResource LabelStyle}"/>
     <TextBox Grid.Row="2" x:Name="NameBox"/>
 
-    <TextBlock Grid.Row="3" Text="Modpack - optional (.mrpack, CurseForge .zip, or a link to either - drag the file in, or browse)" Style="{StaticResource LabelStyle}" TextWrapping="Wrap"/>
-    <Grid Grid.Row="4" x:Name="ModpackDropZone" AllowDrop="True">
-        <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="*"/>
-            <ColumnDefinition Width="Auto"/>
-        </Grid.ColumnDefinitions>
-        <TextBox Grid.Column="0" x:Name="MrpackBox"/>
-        <Button Grid.Column="1" x:Name="BrowseButton" Content="Browse..." Style="{StaticResource BrowseButtonStyle}" Margin="6,0,0,0"/>
+    <TextBlock Grid.Row="3" Text="Modpack - optional" Style="{StaticResource LabelStyle}"/>
+    <Grid Grid.Row="4" x:Name="ModpackDropZone" AllowDrop="True" MinHeight="92">
+        <Rectangle x:Name="DropZoneOutline" RadiusX="8" RadiusY="8" Fill="{StaticResource PanelBrush}"
+                   Stroke="{StaticResource BorderSubtleBrush}" StrokeThickness="1.5" StrokeDashArray="4 3"/>
+
+        <StackPanel x:Name="DropZoneEmptyState" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="12">
+            <TextBlock x:Name="DropZoneIcon" Text="&#128230;" FontSize="24" HorizontalAlignment="Center" Opacity="0.7"/>
+            <TextBlock x:Name="DropZoneTitle" Text="Drag a modpack here" Foreground="{StaticResource TextBrush}"
+                       FontFamily="Segoe UI Semibold" FontSize="13" HorizontalAlignment="Center" Margin="0,6,0,2"/>
+            <TextBlock Text=".mrpack or CurseForge .zip" Foreground="{StaticResource MutedTextBrush}"
+                       FontFamily="Segoe UI" FontSize="11" HorizontalAlignment="Center"/>
+            <Button x:Name="BrowseButton" Content="or browse..." Style="{StaticResource LinkButtonStyle}" Margin="0,4,0,0" HorizontalAlignment="Center"/>
+        </StackPanel>
+
+        <Grid x:Name="DropZoneFilledState" Visibility="Collapsed" Margin="16,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                <TextBlock x:Name="DropZoneFileName" Text="" Foreground="{StaticResource TextBrush}"
+                           FontFamily="Consolas" FontSize="12" TextTrimming="CharacterEllipsis"/>
+                <TextBlock x:Name="DropZoneFileType" Text="" Foreground="{StaticResource MutedTextBrush}"
+                           FontFamily="Segoe UI" FontSize="11" Margin="0,2,0,0"/>
+            </StackPanel>
+            <Button Grid.Column="1" x:Name="ClearModpackButton" Content="Remove" Style="{StaticResource LinkButtonStyle}" VerticalAlignment="Center"/>
+        </Grid>
+
+        <TextBox x:Name="MrpackBox" Visibility="Collapsed"/>
     </Grid>
 
     <TextBlock Grid.Row="5" Text="Max memory (e.g. 6G)" Style="{StaticResource LabelStyle}"/>

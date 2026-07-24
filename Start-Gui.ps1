@@ -459,11 +459,19 @@ $consoleButton.Add_Click({
 
 # ---- Add Server screen -------------------------------------------------
 
-$addBackButton   = $addRoot.FindName("BackButton")
-$nameBox         = $addRoot.FindName("NameBox")
-$mrpackBox       = $addRoot.FindName("MrpackBox")
-$browseButton    = $addRoot.FindName("BrowseButton")
-$modpackDropZone = $addRoot.FindName("ModpackDropZone")
+$addBackButton      = $addRoot.FindName("BackButton")
+$nameBox            = $addRoot.FindName("NameBox")
+$mrpackBox          = $addRoot.FindName("MrpackBox")
+$browseButton       = $addRoot.FindName("BrowseButton")
+$modpackDropZone    = $addRoot.FindName("ModpackDropZone")
+$dropZoneOutline    = $addRoot.FindName("DropZoneOutline")
+$dropZoneIcon       = $addRoot.FindName("DropZoneIcon")
+$dropZoneTitle      = $addRoot.FindName("DropZoneTitle")
+$dropZoneEmptyState = $addRoot.FindName("DropZoneEmptyState")
+$dropZoneFilledState = $addRoot.FindName("DropZoneFilledState")
+$dropZoneFileName   = $addRoot.FindName("DropZoneFileName")
+$dropZoneFileType   = $addRoot.FindName("DropZoneFileType")
+$clearModpackButton = $addRoot.FindName("ClearModpackButton")
 $ramBox          = $addRoot.FindName("RamBox")
 $eulaCheck    = $addRoot.FindName("EulaCheck")
 $addHintText  = $addRoot.FindName("HintText")
@@ -473,12 +481,36 @@ $script:addJob = $null
 
 function Set-AddServerFormEnabled([bool]$Enabled) {
     $nameBox.IsEnabled = $Enabled
-    $mrpackBox.IsEnabled = $Enabled
-    $browseButton.IsEnabled = $Enabled
+    $modpackDropZone.IsEnabled = $Enabled
     $ramBox.IsEnabled = $Enabled
     $eulaCheck.IsEnabled = $Enabled
     $createButton.IsEnabled = $Enabled
     $addBackButton.IsEnabled = $Enabled
+}
+
+# Swaps the drop zone between its empty ("drag a modpack here") and filled
+# (filename + type + Remove) states, driven entirely by $mrpackBox.Text -
+# that stays the single source of truth Browse/drag-drop/Create already read.
+function Update-ModpackDropZoneDisplay {
+    $path = $mrpackBox.Text.Trim()
+    if ([string]::IsNullOrWhiteSpace($path)) {
+        $dropZoneEmptyState.Visibility = "Visible"
+        $dropZoneFilledState.Visibility = "Collapsed"
+        return
+    }
+    $dropZoneEmptyState.Visibility = "Collapsed"
+    $dropZoneFilledState.Visibility = "Visible"
+    $dropZoneFileName.Text = Split-Path -Path $path -Leaf
+    $dropZoneFileType.Text = if ($path -match '\.zip(\?.*)?$') { "CurseForge Server Files" }
+                              elseif ($path -match '\.mrpack(\?.*)?$') { "Modrinth modpack" }
+                              else { "Modpack link" }
+}
+
+function Reset-ModpackDropZoneVisual {
+    $dropZoneOutline.Stroke = $addRoot.FindResource("BorderSubtleBrush")
+    $dropZoneOutline.Fill = $addRoot.FindResource("PanelBrush")
+    $dropZoneIcon.Foreground = $addRoot.FindResource("MutedTextBrush")
+    $dropZoneTitle.Foreground = $addRoot.FindResource("TextBrush")
 }
 
 function Enter-AddServerScreen {
@@ -487,6 +519,8 @@ function Enter-AddServerScreen {
     $ramBox.Text = "6G"
     $eulaCheck.IsChecked = $false
     $addHintText.Text = " "
+    Update-ModpackDropZoneDisplay
+    Reset-ModpackDropZoneVisual
     Set-AddServerFormEnabled $true
 }
 
@@ -495,21 +529,41 @@ $addBackButton.Add_Click({ Show-Screen "Home" })
 $browseButton.Add_Click({
     $ofd = New-Object Microsoft.Win32.OpenFileDialog
     $ofd.Filter = "Modpack (*.mrpack;*.zip)|*.mrpack;*.zip"
-    if ($ofd.ShowDialog() -eq $true) { $mrpackBox.Text = $ofd.FileName }
+    if ($ofd.ShowDialog() -eq $true) {
+        $mrpackBox.Text = $ofd.FileName
+        Update-ModpackDropZoneDisplay
+    }
+})
+
+$clearModpackButton.Add_Click({
+    $mrpackBox.Text = ""
+    Update-ModpackDropZoneDisplay
 })
 
 $modpackDropZone.Add_DragEnter({
     param($sender, $e)
     $isFileDrop = $e.Data.GetDataPresent([Windows.DataFormats]::FileDrop)
     $e.Effects = if ($isFileDrop) { [Windows.DragDropEffects]::Copy } else { [Windows.DragDropEffects]::None }
+    if ($isFileDrop) {
+        $dropZoneOutline.Stroke = $addRoot.FindResource("AccentBrush")
+        $dropZoneOutline.Fill = "#1AE0813F"
+        $dropZoneIcon.Foreground = $addRoot.FindResource("AccentBrush")
+        $dropZoneTitle.Foreground = $addRoot.FindResource("AccentBrush")
+    }
 })
+
+$modpackDropZone.Add_DragLeave({ Reset-ModpackDropZoneVisual })
 
 $modpackDropZone.Add_Drop({
     param($sender, $e)
+    Reset-ModpackDropZoneVisual
     if (-not $e.Data.GetDataPresent([Windows.DataFormats]::FileDrop)) { return }
     $paths = $e.Data.GetData([Windows.DataFormats]::FileDrop)
     $modpack = $paths | Where-Object { $_ -match '\.(mrpack|zip)$' } | Select-Object -First 1
-    if ($modpack) { $mrpackBox.Text = $modpack }
+    if ($modpack) {
+        $mrpackBox.Text = $modpack
+        Update-ModpackDropZoneDisplay
+    }
 })
 
 $createButton.Add_Click({
