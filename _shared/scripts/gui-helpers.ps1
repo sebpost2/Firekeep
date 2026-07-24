@@ -43,11 +43,19 @@ function Get-ServerStatusView {
     return [PSCustomObject]@{ Label = "OUT"; ColorKey = "Offline" }
 }
 
-# Label for the single start/stop toggle button.
-function Get-PrimaryActionLabel {
+# Label + enabled state for the single action button, across the server's
+# full lifecycle. Starting exposes Cancel (aborting a slow/stuck boot before
+# RCON is even up); Stopping is disabled because a graceful RCON stop is
+# already bounded (see stop-server.ps1) and shouldn't be interrupted mid-wait.
+function Get-ActionButtonView {
     param(
-        [Parameter(Mandatory = $true)][bool]$IsRunning
+        [Parameter(Mandatory = $true)][string]$State
     )
-    if ($IsRunning) { return "STOP SERVER" }
-    return "START SERVER"
+    switch ($State) {
+        "Stopped" { return [PSCustomObject]@{ Label = "START SERVER"; IsEnabled = $true } }
+        "Starting" { return [PSCustomObject]@{ Label = "CANCEL"; IsEnabled = $true } }
+        "Running" { return [PSCustomObject]@{ Label = "STOP SERVER"; IsEnabled = $true } }
+        "Stopping" { return [PSCustomObject]@{ Label = "STOPPING..."; IsEnabled = $false } }
+        default { throw "Unrecognized server state '$State'." }
+    }
 }
