@@ -59,3 +59,20 @@ function Get-ActionButtonView {
         default { throw "Unrecognized server state '$State'." }
     }
 }
+
+# Combines the live port check with the GUI's in-flight intent (a launch or
+# stop it kicked off but hasn't confirmed yet) into one lifecycle state.
+# "Pending" only holds while the port hasn't caught up yet; once it does, the
+# transition settles to Running/Stopped, same as the old inline logic in
+# Start-Gui.ps1, now testable on its own.
+function Get-ServerLifecycleState {
+    param(
+        [Parameter(Mandatory = $true)][bool]$IsRunning,
+        [Parameter(Mandatory = $true)][bool]$PendingStart,
+        [Parameter(Mandatory = $true)][bool]$PendingStop
+    )
+    if ($PendingStart -and -not $IsRunning) { return "Starting" }
+    if ($PendingStop -and $IsRunning) { return "Stopping" }
+    if ($IsRunning) { return "Running" }
+    return "Stopped"
+}
