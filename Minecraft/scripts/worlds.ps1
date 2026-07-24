@@ -15,6 +15,8 @@
 $ErrorActionPreference = "Stop"
 $mcRoot = Split-Path -Parent $PSScriptRoot
 $serversRoot = Join-Path $mcRoot "servers"
+$gsRoot = Split-Path -Parent $mcRoot
+. (Join-Path $gsRoot "_shared\scripts\worlds-helpers.ps1")
 
 # Folders that are NEVER a world (even if they mistakenly had a level.dat).
 $TrashDir = "_trash"
@@ -26,89 +28,6 @@ $TrashDir = "_trash"
 function Pause-Menu {
     Write-Host ""
     Read-Host "Press Enter to go back to the menu" | Out-Null
-}
-
-function Test-FileLocked($path) {
-    # True if the file is open exclusively by another process (server alive).
-    if (-not (Test-Path $path)) { return $false }
-    try {
-        $fs = [System.IO.File]::Open($path, 'Open', 'ReadWrite', 'None')
-        $fs.Close(); $fs.Dispose()
-        return $false
-    } catch {
-        return $true
-    }
-}
-
-function Get-ServerProperty($propsPath, $key) {
-    foreach ($l in (Get-Content -Path $propsPath -Encoding ascii)) {
-        if ($l -match "^\s*$([regex]::Escape($key))\s*=(.*)$") { return $matches[1].Trim() }
-    }
-    return $null
-}
-
-function Set-ServerProperty($propsPath, $key, $value) {
-    # Changes (or adds) a key without touching the rest of the file. Backs up once.
-    Copy-Item -Path $propsPath -Destination "$propsPath.bak" -Force
-    $lines = @(Get-Content -Path $propsPath -Encoding ascii)
-    $found = $false
-    for ($i = 0; $i -lt $lines.Count; $i++) {
-        if ($lines[$i] -match "^\s*$([regex]::Escape($key))\s*=") {
-            $lines[$i] = "$key=$value"
-            $found = $true
-            break
-        }
-    }
-    if (-not $found) { $lines += "$key=$value" }
-    Set-Content -Path $propsPath -Value $lines -Encoding ascii
-}
-
-function Get-FolderSizeMB($path) {
-    try {
-        $bytes = (Get-ChildItem -Path $path -Recurse -File -Force -ErrorAction SilentlyContinue |
-            Measure-Object -Property Length -Sum).Sum
-        if (-not $bytes) { return 0 }
-        return [math]::Round($bytes / 1MB, 1)
-    } catch { return 0 }
-}
-
-function Test-ValidName($name) {
-    if ([string]::IsNullOrWhiteSpace($name)) { return $false }
-    if ($name -eq "." -or $name -eq "..") { return $false }
-    $invalid = [System.IO.Path]::GetInvalidFileNameChars()
-    foreach ($c in $invalid) { if ($name.Contains($c)) { return $false } }
-    if ($name -eq $TrashDir) { return $false }
-    return $true
-}
-
-# Returns the list of worlds for an instance (folders with level.dat + the active one).
-function Get-Worlds($instancePath, $activeName) {
-    $result = @()
-    $seen = @{}
-    Get-ChildItem -Path $instancePath -Directory -Force -ErrorAction SilentlyContinue |
-        Where-Object { $_.Name -ne $TrashDir } |
-        ForEach-Object {
-            if (Test-Path (Join-Path $_.FullName "level.dat")) {
-                $result += [PSCustomObject]@{
-                    Name     = $_.Name
-                    Path     = $_.FullName
-                    IsActive = ($_.Name -eq $activeName)
-                    Exists   = $true
-                }
-                $seen[$_.Name] = $true
-            }
-        }
-    # The active world might not be generated yet (no level.dat yet).
-    if ($activeName -and -not $seen.ContainsKey($activeName)) {
-        $p = Join-Path $instancePath $activeName
-        $result += [PSCustomObject]@{
-            Name     = $activeName
-            Path     = $p
-            IsActive = $true
-            Exists   = (Test-Path $p)
-        }
-    }
-    return @($result | Sort-Object -Property @{Expression = "IsActive"; Descending = $true}, "Name")
 }
 
 function Show-WorldsTable($worlds, $activeName) {
