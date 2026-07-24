@@ -217,8 +217,8 @@
     <TextBlock Grid.Row="1" Text="Server name" Style="{StaticResource LabelStyle}"/>
     <TextBox Grid.Row="2" x:Name="NameBox"/>
 
-    <TextBlock Grid.Row="3" Text="Modpack (.mrpack file or Modrinth URL) - optional, Fabric only for now" Style="{StaticResource LabelStyle}"/>
-    <Grid Grid.Row="4">
+    <TextBlock Grid.Row="3" Text="Modpack - optional (.mrpack, CurseForge .zip, or a link to either - drag the file in, or browse)" Style="{StaticResource LabelStyle}" TextWrapping="Wrap"/>
+    <Grid Grid.Row="4" x:Name="ModpackDropZone" AllowDrop="True">
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="*"/>
             <ColumnDefinition Width="Auto"/>

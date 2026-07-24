@@ -459,11 +459,12 @@ $consoleButton.Add_Click({
 
 # ---- Add Server screen -------------------------------------------------
 
-$addBackButton = $addRoot.FindName("BackButton")
-$nameBox      = $addRoot.FindName("NameBox")
-$mrpackBox    = $addRoot.FindName("MrpackBox")
-$browseButton = $addRoot.FindName("BrowseButton")
-$ramBox       = $addRoot.FindName("RamBox")
+$addBackButton   = $addRoot.FindName("BackButton")
+$nameBox         = $addRoot.FindName("NameBox")
+$mrpackBox       = $addRoot.FindName("MrpackBox")
+$browseButton    = $addRoot.FindName("BrowseButton")
+$modpackDropZone = $addRoot.FindName("ModpackDropZone")
+$ramBox          = $addRoot.FindName("RamBox")
 $eulaCheck    = $addRoot.FindName("EulaCheck")
 $addHintText  = $addRoot.FindName("HintText")
 $createButton = $addRoot.FindName("CreateButton")
@@ -493,8 +494,22 @@ $addBackButton.Add_Click({ Show-Screen "Home" })
 
 $browseButton.Add_Click({
     $ofd = New-Object Microsoft.Win32.OpenFileDialog
-    $ofd.Filter = "Modrinth modpack (*.mrpack)|*.mrpack"
+    $ofd.Filter = "Modpack (*.mrpack;*.zip)|*.mrpack;*.zip"
     if ($ofd.ShowDialog() -eq $true) { $mrpackBox.Text = $ofd.FileName }
+})
+
+$modpackDropZone.Add_DragEnter({
+    param($sender, $e)
+    $isFileDrop = $e.Data.GetDataPresent([Windows.DataFormats]::FileDrop)
+    $e.Effects = if ($isFileDrop) { [Windows.DragDropEffects]::Copy } else { [Windows.DragDropEffects]::None }
+})
+
+$modpackDropZone.Add_Drop({
+    param($sender, $e)
+    if (-not $e.Data.GetDataPresent([Windows.DataFormats]::FileDrop)) { return }
+    $paths = $e.Data.GetData([Windows.DataFormats]::FileDrop)
+    $modpack = $paths | Where-Object { $_ -match '\.(mrpack|zip)$' } | Select-Object -First 1
+    if ($modpack) { $mrpackBox.Text = $modpack }
 })
 
 $createButton.Add_Click({
@@ -516,29 +531,44 @@ $createButton.Add_Click({
 
         if ($MrpackPath) {
             . (Join-Path $GsRoot "_shared\scripts\mrpack-helpers.ps1")
-            $mrpackExe = Join-Path $GsRoot "_shared\tools\mrpack.exe"
-            $localMrpack = $MrpackPath
+            $isZip = $MrpackPath -match '\.zip(\?.*)?$'
+            $ext = if ($isZip) { "zip" } else { "mrpack" }
+            $localFile = $MrpackPath
             if ($MrpackPath -match '^https?://') {
-                $localMrpack = Join-Path $env:TEMP ("download-" + [Guid]::NewGuid().ToString("N") + ".mrpack")
-                Invoke-WebRequest -Uri $MrpackPath -OutFile $localMrpack -UseBasicParsing
+                $localFile = Join-Path $env:TEMP ("download-" + [Guid]::NewGuid().ToString("N") + ".$ext")
+                Invoke-WebRequest -Uri $MrpackPath -OutFile $localFile -UseBasicParsing
             } elseif (-not (Test-Path $MrpackPath)) {
-                throw "Could not find the .mrpack file at '$MrpackPath'."
+                throw "Could not find the modpack file at '$MrpackPath'."
             }
 
-            $mcVersion = Get-MinecraftVersionFromMrpack -MrpackPath $localMrpack
-            $javaVersion = Get-JavaVersionForMinecraft -McVersion $mcVersion
-            $loader = Get-ModpackLoader -MrpackPath $localMrpack
-            if ($loader -ne "fabric") {
-                Remove-Item -Recurse -Force $dest
-                throw "This modpack uses $loader, which can't be installed automatically yet (Fabric only). Create the server without a modpack and copy the 'Server Files' in by hand (see README.md)."
-            }
+            if ($isZip) {
+                . (Join-Path $GsRoot "_shared\scripts\curseforge-helpers.ps1")
+                try {
+                    $javaVersion = Install-CurseForgeServerZip -ZipPath $localFile -DestPath $dest
+                } catch {
+                    Remove-Item -Recurse -Force $dest
+                    throw
+                }
+                if ($javaVersion) {
+                    Set-RunConfigJavaAndRam -Path (Join-Path $dest "run.config.ps1") -JavaVersion $javaVersion -MaxRam $MaxRam
+                }
+            } else {
+                $mrpackExe = Join-Path $GsRoot "_shared\tools\mrpack.exe"
+                $mcVersion = Get-MinecraftVersionFromMrpack -MrpackPath $localFile
+                $javaVersion = Get-JavaVersionForMinecraft -McVersion $mcVersion
+                $loader = Get-ModpackLoader -MrpackPath $localFile
+                if ($loader -ne "fabric") {
+                    Remove-Item -Recurse -Force $dest
+                    throw "This modpack uses $loader, which can't be installed automatically yet (Fabric only). Create the server without a modpack and copy the 'Server Files' in by hand (see README.md)."
+                }
 
-            & $mrpackExe $localMrpack --server-dir $dest
-            if ($LASTEXITCODE -ne 0) {
-                Remove-Item -Recurse -Force $dest
-                throw "mrpack.exe failed installing the modpack (code $LASTEXITCODE)."
+                & $mrpackExe $localFile --server-dir $dest
+                if ($LASTEXITCODE -ne 0) {
+                    Remove-Item -Recurse -Force $dest
+                    throw "mrpack.exe failed installing the modpack (code $LASTEXITCODE)."
+                }
+                Set-RunConfigJavaAndRam -Path (Join-Path $dest "run.config.ps1") -JavaVersion $javaVersion -MaxRam $MaxRam
             }
-            Set-RunConfigJavaAndRam -Path (Join-Path $dest "run.config.ps1") -JavaVersion $javaVersion -MaxRam $MaxRam
         }
 
         Set-Content -Path (Join-Path $dest "eula.txt") -Value "eula=true" -Encoding ascii
