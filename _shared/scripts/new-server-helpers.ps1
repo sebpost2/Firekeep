@@ -4,6 +4,20 @@
 # the GUI collects the same values from its form fields instead.
 # Loaded via dot-source.
 
+# Server names become a Windows folder name directly (servers\<Name>\), so
+# spaces and path-unsafe characters are rejected here rather than letting a
+# broken server get created - ServerPackCreator's vendored start.ps1 blocks
+# on a "path contains spaces" prompt that silently strands the server if
+# nobody's watching the console when it boots.
+function Test-ServerNameValid {
+    param(
+        [Parameter(Mandatory = $true)][AllowEmptyString()][string]$Name
+    )
+    if ([string]::IsNullOrWhiteSpace($Name)) { return $false }
+    if ($Name -match '[\\/:*?"<>|\s]') { return $false }
+    return $true
+}
+
 # Copies the generic _template into a new named instance and pre-seeds
 # server.properties with RCON enabled + a random password, so "Stop Server"
 # works cleanly from the very first start.

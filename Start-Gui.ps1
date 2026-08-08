@@ -14,6 +14,7 @@ $root = $PSScriptRoot
 . (Join-Path $root "_shared\scripts\rcon.ps1")
 . (Join-Path $root "_shared\scripts\tunnel-helpers.ps1")
 . (Join-Path $root "_shared\scripts\worlds-helpers.ps1")
+. (Join-Path $root "_shared\scripts\new-server-helpers.ps1")
 . (Join-Path $root "_shared\scripts\gui-dialogs.ps1")
 . (Join-Path $root "_shared\scripts\verity-helpers.ps1")
 
@@ -612,6 +613,11 @@ $modpackDropZone.Add_Drop({
 $createButton.Add_Click({
     $name = $nameBox.Text.Trim()
     if ([string]::IsNullOrWhiteSpace($name)) { $addHintText.Text = "Enter a server name."; return }
+    if (-not (Test-ServerNameValid -Name $name)) {
+        $suggestion = $name -replace '[\\/:*?"<>|\s]', ''
+        $addHintText.Text = "Server names can't contain spaces or path characters - some modpacks' launch scripts break on spaced paths. Try '$suggestion' instead."
+        return
+    }
     if (-not $eulaCheck.IsChecked) { $addHintText.Text = "You need to accept the Minecraft EULA to continue."; return }
     $mrpack = $mrpackBox.Text.Trim()
     $ram = $ramBox.Text.Trim()
