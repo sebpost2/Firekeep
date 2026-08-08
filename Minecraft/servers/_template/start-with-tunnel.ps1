@@ -8,7 +8,11 @@ $gsRoot = Split-Path -Parent $mcRoot
 . (Join-Path $gsRoot "_shared\scripts\verity-helpers.ps1")
 if (Test-VerityModPresent -InstancePath $PSScriptRoot) {
     Write-Host "Verity mod detected - making sure the local AI stack (Ollama/Kokoro/Whisper) is up..."
-    Start-VerityLocalAiStack -McRoot $mcRoot
+    try {
+        Start-VerityLocalAiStack -McRoot $mcRoot
+    } catch {
+        Write-Warning "Local AI stack didn't come up ($_) - starting the server anyway; Verity will fall back to its configured cloud provider."
+    }
 }
 
 $toolDir = Join-Path $gsRoot "_shared\tools\playit"
