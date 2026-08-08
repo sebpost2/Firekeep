@@ -36,8 +36,10 @@ $proc = Start-Process -FilePath $ollamaExe -ArgumentList "serve" -PassThru -Wind
 Start-Sleep -Seconds 3
 try {
     & $ollamaExe pull "timheinrich2011/verity-3b"
+    if ($LASTEXITCODE -ne 0) {
+        throw "ollama pull exited with code $LASTEXITCODE - verity-3b was not downloaded successfully."
+    }
+    Write-Host "Ollama installed and verity-3b model pulled."
 } finally {
     Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
 }
-
-Write-Host "Ollama installed and verity-3b model pulled."

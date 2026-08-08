@@ -31,8 +31,14 @@ if (-not (Test-Path $modelPath) -or -not (Test-Path $voicesPath)) {
     $voicesAsset = $release.assets | Where-Object { $_.name -eq "voices-v1.0.bin" } | Select-Object -First 1
 
     Write-Host "Downloading Kokoro model weights (~300MB)..."
-    if (-not (Test-Path $modelPath)) { Invoke-WebRequest -Uri $modelAsset.browser_download_url -OutFile $modelPath -UseBasicParsing }
-    if (-not (Test-Path $voicesPath)) { Invoke-WebRequest -Uri $voicesAsset.browser_download_url -OutFile $voicesPath -UseBasicParsing }
+    if (-not (Test-Path $modelPath)) {
+        Invoke-WebRequest -Uri $modelAsset.browser_download_url -OutFile "$modelPath.tmp" -UseBasicParsing
+        Move-Item -Path "$modelPath.tmp" -Destination $modelPath
+    }
+    if (-not (Test-Path $voicesPath)) {
+        Invoke-WebRequest -Uri $voicesAsset.browser_download_url -OutFile "$voicesPath.tmp" -UseBasicParsing
+        Move-Item -Path "$voicesPath.tmp" -Destination $voicesPath
+    }
 }
 
 Copy-Item -Path (Join-Path $gsRoot "_shared\scripts\verity-ai-servers\kokoro_server.py") -Destination $kokoroDir -Force
