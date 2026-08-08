@@ -268,6 +268,7 @@ $verityAiButton.Add_Click({
 
     if ($allRunning) {
         $verityAiStatusText.Text = "Stopping..."
+        $script:aiJobStartTime = $null
         $script:aiJob = Start-Job -ScriptBlock {
             param($GsRoot)
             . (Join-Path $GsRoot "_shared\scripts\verity-helpers.ps1")
@@ -275,6 +276,7 @@ $verityAiButton.Add_Click({
         } -ArgumentList $root
     } else {
         $verityAiStatusText.Text = "Starting local AI (first run can take a few minutes to install)..."
+        $script:aiJobStartTime = Get-Date
         $script:aiJob = Start-Job -ScriptBlock {
             param($GsRoot, $InstancePath, $McRoot)
             . (Join-Path $GsRoot "_shared\scripts\verity-helpers.ps1")
@@ -702,7 +704,14 @@ $addJobTimer.Start()
 $aiJobTimer = New-Object System.Windows.Threading.DispatcherTimer
 $aiJobTimer.Interval = [TimeSpan]::FromMilliseconds(500)
 $aiJobTimer.Add_Tick({
-    if (-not $script:aiJob -or $script:aiJob.State -eq "Running" -or $script:aiJob.State -eq "NotStarted") { return }
+    if (-not $script:aiJob) { return }
+    if ($script:aiJob.State -eq "Running" -or $script:aiJob.State -eq "NotStarted") {
+        if ($script:aiJobStartTime) {
+            $elapsed = [int]((Get-Date) - $script:aiJobStartTime).TotalSeconds
+            $verityAiStatusText.Text = "Starting local AI (first run can take a few minutes to install)... ${elapsed}s"
+        }
+        return
+    }
 
     $failed = $script:aiJob.State -eq "Failed"
     $reason = if ($failed) { $script:aiJob.ChildJobs[0].JobStateInfo.Reason.Message } else { $null }
@@ -741,18 +750,20 @@ $script:rconJobServerPath = $null
 $script:consoleServerPath = $null
 $MaxConsoleLines = 2000
 
-# Only clear the log view and re-read from the start when switching to a
-# DIFFERENT server. Re-entering Console for the same server keeps the
-# existing offset/text, so it doesn't re-read (and re-render) the whole
-# log file from scratch on every visit - for a long-running server that
-# full re-read/render was blocking the UI thread, the same class of
-# freeze already fixed once this session for Test-PortOpen.
+# Always clears the view and re-seeds the tail offset on entry, rather than
+# replaying whatever text accumulated the last time Console was open for
+# this server - a long crash-loop can otherwise leave thousands of stale
+# lines sitting in the view long after the server's recovered. Seeking to
+# a fixed byte window from the end (not offset 0) keeps this cheap even for
+# a huge log file - the same class of full-file-read freeze already fixed
+# once this session for Test-PortOpen.
+$ConsoleTailWindowBytes = 64KB
 function Enter-ConsoleScreen {
-    if ($script:selected.Path -ne $script:consoleServerPath) {
-        $script:logOffset = 0
-        $logText.Text = ""
-        $script:consoleServerPath = $script:selected.Path
-    }
+    $script:consoleServerPath = $script:selected.Path
+    $logPath = Join-Path $script:selected.Path "logs\latest.log"
+    $fileLen = if (Test-Path $logPath) { (Get-Item $logPath).Length } else { 0 }
+    $script:logOffset = [Math]::Max(0, $fileLen - $ConsoleTailWindowBytes)
+    $logText.Text = ""
     $consoleSubtitleText.Text = $script:selected.Name
     $commandBox.Text = ""
     $logTailTimer.Start()

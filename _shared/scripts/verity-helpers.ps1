@@ -85,7 +85,12 @@ function Set-VerityLocalAI {
     $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.SpeechSettings" -Key "sttEndpoint" -Value "http://127.0.0.1:9000/v1"
     $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.SpeechSettings" -Key "sttModel" -Value "base.en"
 
-    Set-Content -Path $tomlPath -Value $lines -Encoding utf8
+    # Windows PowerShell 5.1's -Encoding utf8 always prepends a BOM, which
+    # Forge's TOML parser (NightConfig) doesn't strip - it reads the BOM
+    # bytes as the start of a bare key and refuses to load the file at all,
+    # crashing every server boot. Write UTF-8 without a BOM instead.
+    $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+    [System.IO.File]::WriteAllLines($tomlPath, $lines, $utf8NoBom)
 }
 
 # A quick, non-throwing health check for a sidecar's HTTP endpoint.
