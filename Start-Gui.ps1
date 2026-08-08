@@ -704,13 +704,12 @@ $aiJobTimer.Interval = [TimeSpan]::FromMilliseconds(500)
 $aiJobTimer.Add_Tick({
     if (-not $script:aiJob -or $script:aiJob.State -eq "Running" -or $script:aiJob.State -eq "NotStarted") { return }
 
-    if ($script:aiJob.State -eq "Failed") {
-        $reason = $script:aiJob.ChildJobs[0].JobStateInfo.Reason.Message
-        $verityAiStatusText.Text = "Error: $reason"
-    }
+    $failed = $script:aiJob.State -eq "Failed"
+    $reason = if ($failed) { $script:aiJob.ChildJobs[0].JobStateInfo.Reason.Message } else { $null }
     Remove-Job $script:aiJob -Force
     $script:aiJob = $null
     Sync-StatusDisplay | Out-Null
+    if ($failed) { $verityAiStatusText.Text = "Error: $reason" }
 })
 $aiJobTimer.Start()
 
