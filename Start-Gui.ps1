@@ -311,8 +311,12 @@ $verityAiStopAllButton.Add_Click({
 
 $verityApiKeySaveButton.Add_Click({
     if (-not $script:selected) { return }
-    Set-VerityApiKey -InstancePath $script:selected.Path -ApiKey $verityApiKeyBox.Password
-    $verityApiKeySaveButton.Content = "SAVED"
+    try {
+        Set-VerityApiKey -InstancePath $script:selected.Path -ApiKey $verityApiKeyBox.Password.Trim()
+        $verityApiKeySaveButton.Content = "SAVED"
+    } catch {
+        $verityApiKeySaveButton.Content = "FAILED"
+    }
 })
 
 $verityApiKeyBox.Add_PasswordChanged({ $verityApiKeySaveButton.Content = "SAVE" })

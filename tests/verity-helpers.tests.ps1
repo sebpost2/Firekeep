@@ -192,6 +192,88 @@ Describe "Set-VerityAiProvider" {
         { Set-VerityAiProvider -InstancePath $inst -Service "Ollama" -UseLocal $true } | Should Throw
     }
 
+    function New-FakeOldSchemaInstance([string]$Path) {
+        New-Item -ItemType Directory -Force -Path (Join-Path $Path "config") | Out-Null
+        @'
+[GeneralSettings.AISettings]
+	apiKey = ""
+	aiProvider = "OPENAI"
+	aiEndpoint = ""
+	aiModel = ""
+
+[GeneralSettings.VoiceSettings]
+	ttsProvider = "NATIVE"
+	ttsEndpoint = ""
+	kokoroModel = ""
+
+[GeneralSettings.SpeechSettings]
+	sttProvider = "NATIVE"
+	sttEndpoint = ""
+	sttModel = ""
+'@ | Set-Content -Path (Join-Path $Path "config\verity-common.toml") -Encoding utf8
+    }
+
+    It "writes the old schema's nested keys for Ollama when UseLocal is true" {
+        $inst = Join-Path $root "old-ollama-on"
+        New-FakeOldSchemaInstance -Path $inst
+        Set-VerityAiProvider -InstancePath $inst -Service "Ollama" -UseLocal $true
+        $content = Get-Content (Join-Path $inst "config\verity-common.toml") -Raw
+        $content | Should Match 'aiProvider = "OLLAMA"'
+        $content | Should Match 'aiEndpoint = "http://127\.0\.0\.1:11434/v1"'
+        $content | Should Match 'aiModel = "timheinrich2011/verity-3b"'
+    }
+
+    It "resets the old schema's nested keys for Ollama when UseLocal is false" {
+        $inst = Join-Path $root "old-ollama-off"
+        New-FakeOldSchemaInstance -Path $inst
+        Set-VerityAiProvider -InstancePath $inst -Service "Ollama" -UseLocal $true
+        Set-VerityAiProvider -InstancePath $inst -Service "Ollama" -UseLocal $false
+        $content = Get-Content (Join-Path $inst "config\verity-common.toml") -Raw
+        $content | Should Match 'aiProvider = "OPENAI"'
+        $content | Should Match 'aiEndpoint = ""'
+        $content | Should Match 'aiModel = ""'
+    }
+
+    It "writes the old schema's VoiceSettings for Kokoro" {
+        $inst = Join-Path $root "old-kokoro"
+        New-FakeOldSchemaInstance -Path $inst
+        Set-VerityAiProvider -InstancePath $inst -Service "Kokoro" -UseLocal $true
+        $content = Get-Content (Join-Path $inst "config\verity-common.toml") -Raw
+        $content | Should Match 'ttsProvider = "KOKORO"'
+        $content | Should Match 'ttsEndpoint = "http://127\.0\.0\.1:8880/v1"'
+        $content | Should Match 'kokoroModel = "kokoro"'
+
+        Set-VerityAiProvider -InstancePath $inst -Service "Kokoro" -UseLocal $false
+        $content = Get-Content (Join-Path $inst "config\verity-common.toml") -Raw
+        $content | Should Match 'ttsProvider = "NATIVE"'
+        $content | Should Match 'ttsEndpoint = ""'
+    }
+
+    It "writes the old schema's SpeechSettings for Whisper" {
+        $inst = Join-Path $root "old-whisper"
+        New-FakeOldSchemaInstance -Path $inst
+        Set-VerityAiProvider -InstancePath $inst -Service "Whisper" -UseLocal $true
+        $content = Get-Content (Join-Path $inst "config\verity-common.toml") -Raw
+        $content | Should Match 'sttProvider = "WHISPER"'
+        $content | Should Match 'sttEndpoint = "http://127\.0\.0\.1:9000/v1"'
+        $content | Should Match 'sttModel = "base.en"'
+
+        Set-VerityAiProvider -InstancePath $inst -Service "Whisper" -UseLocal $false
+        $content = Get-Content (Join-Path $inst "config\verity-common.toml") -Raw
+        $content | Should Match 'sttProvider = "NATIVE"'
+        $content | Should Match 'sttModel = ""'
+    }
+
+    It "throws when the config matches neither known schema" {
+        $inst = Join-Path $root "unknown-schema"
+        New-Item -ItemType Directory -Force -Path (Join-Path $inst "config") | Out-Null
+        @'
+[SomethingElse]
+	use_ollama = false
+'@ | Set-Content -Path (Join-Path $inst "config\verity-common.toml") -Encoding utf8
+        { Set-VerityAiProvider -InstancePath $inst -Service "Ollama" -UseLocal $true } | Should Throw
+    }
+
     Remove-Item -Recurse -Force $root -ErrorAction SilentlyContinue
 }
 
@@ -233,6 +315,40 @@ Describe "Get-VerityRequiredSidecars" {
     It "returns an empty array when the config file doesn't exist" {
         $inst = Join-Path $root "no-config"
         New-Item -ItemType Directory -Force -Path $inst | Out-Null
+        (Get-VerityRequiredSidecars -InstancePath $inst).Count | Should Be 0
+    }
+
+    It "detects the old schema's string-enum providers" {
+        $inst = Join-Path $root "old-schema"
+        New-Item -ItemType Directory -Force -Path (Join-Path $inst "config") | Out-Null
+        @'
+[GeneralSettings.AISettings]
+	aiProvider = "OLLAMA"
+
+[GeneralSettings.VoiceSettings]
+	ttsProvider = "KOKORO"
+
+[GeneralSettings.SpeechSettings]
+	sttProvider = "WHISPER"
+'@ | Set-Content -Path (Join-Path $inst "config\verity-common.toml") -Encoding utf8
+
+        (Get-VerityRequiredSidecars -InstancePath $inst) | Should Be @("Ollama", "Kokoro", "Whisper")
+    }
+
+    It "returns an empty array for an old-schema config with everything on NATIVE/OPENAI" {
+        $inst = Join-Path $root "old-schema-cloud"
+        New-Item -ItemType Directory -Force -Path (Join-Path $inst "config") | Out-Null
+        @'
+[GeneralSettings.AISettings]
+	aiProvider = "OPENAI"
+
+[GeneralSettings.VoiceSettings]
+	ttsProvider = "NATIVE"
+
+[GeneralSettings.SpeechSettings]
+	sttProvider = "NATIVE"
+'@ | Set-Content -Path (Join-Path $inst "config\verity-common.toml") -Encoding utf8
+
         (Get-VerityRequiredSidecars -InstancePath $inst).Count | Should Be 0
     }
 
@@ -313,6 +429,38 @@ Describe "Set-VerityApiKey" {
         $keyWithQuote = 'gsk_test"value'
         Set-VerityApiKey -InstancePath $inst -ApiKey $keyWithQuote
         (Get-VerityApiKey -InstancePath $inst) | Should Be $keyWithQuote
+    }
+
+    It "round-trips a value containing backslashes unchanged" {
+        $inst = Join-Path $root "backslash-key"
+        New-FakeVerityInstance -Path $inst
+        $keyWithBackslash = 'C:\path\to\thing'
+        Set-VerityApiKey -InstancePath $inst -ApiKey $keyWithBackslash
+        (Get-VerityApiKey -InstancePath $inst) | Should Be $keyWithBackslash
+    }
+
+    It "writes the key into the old schema's nested section" {
+        $inst = Join-Path $root "old-schema-key"
+        New-Item -ItemType Directory -Force -Path (Join-Path $inst "config") | Out-Null
+        @'
+[GeneralSettings.AISettings]
+	apiKey = ""
+	aiProvider = "OPENAI"
+'@ | Set-Content -Path (Join-Path $inst "config\verity-common.toml") -Encoding utf8
+
+        Set-VerityApiKey -InstancePath $inst -ApiKey "gsk_old123"
+        (Get-Content (Join-Path $inst "config\verity-common.toml") -Raw) | Should Match 'apiKey = "gsk_old123"'
+    }
+
+    It "throws when the config matches neither known schema" {
+        $inst = Join-Path $root "unknown-schema"
+        New-Item -ItemType Directory -Force -Path (Join-Path $inst "config") | Out-Null
+        @'
+[SomethingElse]
+	apiKey = ""
+'@ | Set-Content -Path (Join-Path $inst "config\verity-common.toml") -Encoding utf8
+
+        { Set-VerityApiKey -InstancePath $inst -ApiKey "x" } | Should Throw
     }
 
     Remove-Item -Recurse -Force $root -ErrorAction SilentlyContinue
