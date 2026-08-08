@@ -157,9 +157,9 @@ function Get-VerityRequiredSidecars {
 
     $content = Get-Content -Path $tomlPath -Raw
     $required = @()
-    if ($content -match '(?m)^\s*aiProvider\s*=\s*"OLLAMA"') { $required += "Ollama" }
-    if ($content -match '(?m)^\s*ttsProvider\s*=\s*"KOKORO"') { $required += "Kokoro" }
-    if ($content -match '(?m)^\s*sttProvider\s*=\s*"WHISPER"') { $required += "Whisper" }
+    if ($content -match '(?m)^\s*use_ollama\s*=\s*true') { $required += "Ollama" }
+    if ($content -match '(?m)^\s*use_kokoro\s*=\s*true') { $required += "Kokoro" }
+    if ($content -match '(?m)^\s*use_local_whisper\s*=\s*true') { $required += "Whisper" }
     return $required
 }
 

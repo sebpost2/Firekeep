@@ -193,35 +193,34 @@ Describe "Get-VerityRequiredSidecars" {
 
     $root = Join-Path $env:TEMP ("verity-required-" + [Guid]::NewGuid().ToString("N"))
 
-    function New-FakeVerityToml([string]$Path, [string]$AiProvider, [string]$TtsProvider, [string]$SttProvider) {
+    function New-FakeVerityToml([string]$Path, [bool]$UseOllama, [bool]$UseKokoro, [bool]$UseWhisper) {
         New-Item -ItemType Directory -Force -Path (Join-Path $Path "config") | Out-Null
+        $ollamaText = if ($UseOllama) { "true" } else { "false" }
+        $kokoroText = if ($UseKokoro) { "true" } else { "false" }
+        $whisperText = if ($UseWhisper) { "true" } else { "false" }
         @"
-[GeneralSettings.AISettings]
-	aiProvider = "$AiProvider"
-
-[GeneralSettings.VoiceSettings]
-	ttsProvider = "$TtsProvider"
-
-[GeneralSettings.SpeechSettings]
-	sttProvider = "$SttProvider"
+[AISettings]
+	use_ollama = $ollamaText
+	use_kokoro = $kokoroText
+	use_local_whisper = $whisperText
 "@ | Set-Content -Path (Join-Path $Path "config\verity-common.toml") -Encoding utf8
     }
 
-    It "returns all three when all providers are local" {
+    It "returns all three when all are local" {
         $inst = Join-Path $root "all-local"
-        New-FakeVerityToml -Path $inst -AiProvider "OLLAMA" -TtsProvider "KOKORO" -SttProvider "WHISPER"
+        New-FakeVerityToml -Path $inst -UseOllama $true -UseKokoro $true -UseWhisper $true
         (Get-VerityRequiredSidecars -InstancePath $inst) | Should Be @("Ollama", "Kokoro", "Whisper")
     }
 
     It "returns only the ones set local, e.g. just the core LLM" {
         $inst = Join-Path $root "llm-only"
-        New-FakeVerityToml -Path $inst -AiProvider "OLLAMA" -TtsProvider "NATIVE" -SttProvider "NATIVE"
+        New-FakeVerityToml -Path $inst -UseOllama $true -UseKokoro $false -UseWhisper $false
         (Get-VerityRequiredSidecars -InstancePath $inst) | Should Be @("Ollama")
     }
 
     It "returns an empty array when nothing is local" {
         $inst = Join-Path $root "cloud-only"
-        New-FakeVerityToml -Path $inst -AiProvider "OPENAI" -TtsProvider "NATIVE" -SttProvider "NATIVE"
+        New-FakeVerityToml -Path $inst -UseOllama $false -UseKokoro $false -UseWhisper $false
         (Get-VerityRequiredSidecars -InstancePath $inst).Count | Should Be 0
     }
 
