@@ -2,6 +2,9 @@
 # Detection, config, and local-AI-sidecar lifecycle for servers running the
 # Verity mod. Loaded via dot-source.
 
+. (Join-Path $PSScriptRoot "rcon.ps1")
+. (Join-Path $PSScriptRoot "gui-helpers.ps1")
+
 # A server is "Verity-enabled" if its mods/ folder has a verity-*.jar -
 # same signature-file-scan pattern Get-DetectedJavaVersion already uses.
 function Test-VerityModPresent {
@@ -96,5 +99,67 @@ function Test-SidecarHealthy {
         return ($resp.StatusCode -ge 200 -and $resp.StatusCode -lt 300)
     } catch {
         return $false
+    }
+}
+
+# Installs (if needed) and starts the 3 local-AI sidecars, waiting for each
+# to answer a health check before returning. Shared host-wide - one set of
+# sidecars serves every Verity-enabled server on this machine.
+function Start-VerityLocalAiStack {
+    param(
+        [Parameter(Mandatory = $true)][string]$McRoot
+    )
+
+    $scriptsDir = Join-Path $McRoot "scripts"
+    $aiDir = Join-Path $McRoot "tools\ai"
+    $logDir = Join-Path $aiDir "logs"
+    New-Item -ItemType Directory -Force -Path $logDir | Out-Null
+
+    if (-not (Test-Path (Join-Path $aiDir "ollama\ollama.exe"))) {
+        & (Join-Path $scriptsDir "install-ollama.ps1")
+    }
+    if (-not (Test-Path (Join-Path $aiDir "kokoro\kokoro_server.py"))) {
+        & (Join-Path $scriptsDir "install-kokoro.ps1")
+    }
+    if (-not (Test-Path (Join-Path $aiDir "whisper\whisper_server.py"))) {
+        & (Join-Path $scriptsDir "install-whisper.ps1")
+    }
+
+    if (-not (Test-PortOpen -Port 11434)) {
+        Start-Process -FilePath (Join-Path $aiDir "ollama\ollama.exe") -ArgumentList "serve" -WindowStyle Hidden `
+            -RedirectStandardOutput (Join-Path $logDir "ollama.log") -RedirectStandardError (Join-Path $logDir "ollama.err.log")
+    }
+    $pythonExe = Join-Path $aiDir "python\python.exe"
+    if (-not (Test-PortOpen -Port 8880)) {
+        Start-Process -FilePath $pythonExe -ArgumentList "`"$(Join-Path $aiDir 'kokoro\kokoro_server.py')`"" -WindowStyle Hidden `
+            -RedirectStandardOutput (Join-Path $logDir "kokoro.log") -RedirectStandardError (Join-Path $logDir "kokoro.err.log")
+    }
+    if (-not (Test-PortOpen -Port 9000)) {
+        Start-Process -FilePath $pythonExe -ArgumentList "`"$(Join-Path $aiDir 'whisper\whisper_server.py')`"" -WindowStyle Hidden `
+            -RedirectStandardOutput (Join-Path $logDir "whisper.log") -RedirectStandardError (Join-Path $logDir "whisper.err.log")
+    }
+
+    $checks = @(
+        @{ Url = "http://127.0.0.1:11434/v1/models"; Name = "Ollama"; LogFile = "ollama.err.log" },
+        @{ Url = "http://127.0.0.1:8880/health"; Name = "Kokoro"; LogFile = "kokoro.err.log" },
+        @{ Url = "http://127.0.0.1:9000/health"; Name = "Whisper"; LogFile = "whisper.err.log" }
+    )
+    foreach ($check in $checks) {
+        $ready = $false
+        for ($i = 0; $i -lt 30; $i++) {
+            if (Test-SidecarHealthy -Url $check.Url) { $ready = $true; break }
+            Start-Sleep -Seconds 1
+        }
+        if (-not $ready) {
+            throw "$($check.Name) didn't become ready within 30s - check $(Join-Path $logDir $check.LogFile)"
+        }
+    }
+}
+
+# Stops all 3 sidecars by whatever's listening on their ports.
+function Stop-VerityLocalAiStack {
+    foreach ($port in @(11434, 8880, 9000)) {
+        $ownerPid = Get-ListenerPid -Port $port
+        if ($ownerPid) { Stop-ProcessTree -ProcessId $ownerPid }
     }
 }
