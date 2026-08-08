@@ -22,11 +22,17 @@ function Test-VerityModPresent {
 # brackets (e.g. "GeneralSettings.AISettings" for "[GeneralSettings.AISettings]").
 function Set-TomlSectionValue {
     param(
-        [Parameter(Mandatory = $true)][string[]]$Lines,
+        [Parameter(Mandatory = $true)]$Lines,
         [Parameter(Mandatory = $true)][string]$Section,
         [Parameter(Mandatory = $true)][string]$Key,
         [Parameter(Mandatory = $true)][string]$Value
     )
+
+    # Cast to [string[]] to ensure proper array handling:
+    # - Scalar string inputs (e.g., from Get-Content on single line) become one-element array
+    # - Arrays with empty strings (valid TOML blank lines) pass through intact
+    # This approach works around Pester v4 issue where [string[]] type constraint fails with arrays containing empty strings
+    [string[]]$Lines = @($Lines)
 
     $result = @()
     $inSection = $false
