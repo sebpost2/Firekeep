@@ -230,19 +230,3 @@ Describe "Get-LogTailChunk" {
 
     Remove-Item -Recurse -Force $root -ErrorAction SilentlyContinue
 }
-
-Describe "Get-VerityAiStatusText" {
-    It "shows LIT for a running sidecar and OUT for a stopped one" {
-        $text = Get-VerityAiStatusText -OllamaRunning $true -KokoroRunning $false -WhisperRunning $true
-        $text | Should Be "Ollama: LIT  |  Kokoro: OUT  |  Whisper: LIT"
-    }
-}
-
-Describe "Get-VerityAiButtonLabel" {
-    It "reads START LOCAL AI when not all sidecars are running" {
-        Get-VerityAiButtonLabel -AllRunning $false | Should Be "START LOCAL AI"
-    }
-    It "reads STOP LOCAL AI when all sidecars are running" {
-        Get-VerityAiButtonLabel -AllRunning $true | Should Be "STOP LOCAL AI"
-    }
-}

@@ -28,7 +28,7 @@ function Set-TomlSectionValue {
         [Parameter(Mandatory = $true)]$Lines,
         [Parameter(Mandatory = $true)][string]$Section,
         [Parameter(Mandatory = $true)][string]$Key,
-        [Parameter(Mandatory = $true)][string]$Value
+        [Parameter(Mandatory = $true)][AllowEmptyString()][string]$Value
     )
 
     # Cast to [string[]] to ensure proper array handling:
@@ -58,12 +58,15 @@ function Set-TomlSectionValue {
     return $result
 }
 
-# Points a Verity-enabled server's config/verity-common.toml at the local
-# AI sidecars (Ollama/Kokoro/Whisper) instead of a cloud provider. Run once
-# when Local AI is enabled for that server from the GUI.
-function Set-VerityLocalAI {
+# Points one Verity subsystem (LLM/TTS/STT) at its local sidecar, or reverts
+# it to Verity's vanilla non-local default. config/verity-common.toml is the
+# single source of truth for which sidecars a server wants running - there's
+# no separate on/off state to keep in sync.
+function Set-VerityAiProvider {
     param(
-        [Parameter(Mandatory = $true)][string]$InstancePath
+        [Parameter(Mandatory = $true)][string]$InstancePath,
+        [Parameter(Mandatory = $true)][ValidateSet("Ollama", "Kokoro", "Whisper")][string]$Service,
+        [Parameter(Mandatory = $true)][bool]$UseLocal
     )
 
     $tomlPath = Join-Path $InstancePath "config\verity-common.toml"
@@ -73,17 +76,41 @@ function Set-VerityLocalAI {
 
     $lines = Get-Content -Path $tomlPath -Encoding utf8
 
-    $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.AISettings" -Key "aiProvider" -Value "OLLAMA"
-    $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.AISettings" -Key "aiEndpoint" -Value "http://127.0.0.1:11434/v1"
-    $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.AISettings" -Key "aiModel" -Value "timheinrich2011/verity-3b"
-
-    $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.VoiceSettings" -Key "ttsProvider" -Value "KOKORO"
-    $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.VoiceSettings" -Key "ttsEndpoint" -Value "http://127.0.0.1:8880/v1"
-    $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.VoiceSettings" -Key "kokoroModel" -Value "kokoro"
-
-    $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.SpeechSettings" -Key "sttProvider" -Value "WHISPER"
-    $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.SpeechSettings" -Key "sttEndpoint" -Value "http://127.0.0.1:9000/v1"
-    $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.SpeechSettings" -Key "sttModel" -Value "base.en"
+    switch ($Service) {
+        "Ollama" {
+            if ($UseLocal) {
+                $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.AISettings" -Key "aiProvider" -Value "OLLAMA"
+                $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.AISettings" -Key "aiEndpoint" -Value "http://127.0.0.1:11434/v1"
+                $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.AISettings" -Key "aiModel" -Value "timheinrich2011/verity-3b"
+            } else {
+                $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.AISettings" -Key "aiProvider" -Value "OPENAI"
+                $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.AISettings" -Key "aiEndpoint" -Value ""
+                $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.AISettings" -Key "aiModel" -Value ""
+            }
+        }
+        "Kokoro" {
+            if ($UseLocal) {
+                $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.VoiceSettings" -Key "ttsProvider" -Value "KOKORO"
+                $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.VoiceSettings" -Key "ttsEndpoint" -Value "http://127.0.0.1:8880/v1"
+                $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.VoiceSettings" -Key "kokoroModel" -Value "kokoro"
+            } else {
+                $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.VoiceSettings" -Key "ttsProvider" -Value "NATIVE"
+                $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.VoiceSettings" -Key "ttsEndpoint" -Value ""
+                $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.VoiceSettings" -Key "kokoroModel" -Value ""
+            }
+        }
+        "Whisper" {
+            if ($UseLocal) {
+                $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.SpeechSettings" -Key "sttProvider" -Value "WHISPER"
+                $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.SpeechSettings" -Key "sttEndpoint" -Value "http://127.0.0.1:9000/v1"
+                $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.SpeechSettings" -Key "sttModel" -Value "base.en"
+            } else {
+                $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.SpeechSettings" -Key "sttProvider" -Value "NATIVE"
+                $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.SpeechSettings" -Key "sttEndpoint" -Value ""
+                $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.SpeechSettings" -Key "sttModel" -Value ""
+            }
+        }
+    }
 
     # Windows PowerShell 5.1's -Encoding utf8 always prepends a BOM, which
     # Forge's TOML parser (NightConfig) doesn't strip - it reads the BOM
@@ -91,6 +118,24 @@ function Set-VerityLocalAI {
     # crashing every server boot. Write UTF-8 without a BOM instead.
     $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
     [System.IO.File]::WriteAllLines($tomlPath, $lines, $utf8NoBom)
+}
+
+# Reads which of the 3 sidecars this server's config currently points at
+# locally - the toml IS the persisted on/off state, so this is the only
+# place that needs to know how to read it back out.
+function Get-VerityRequiredSidecars {
+    param(
+        [Parameter(Mandatory = $true)][string]$InstancePath
+    )
+    $tomlPath = Join-Path $InstancePath "config\verity-common.toml"
+    if (-not (Test-Path $tomlPath)) { return @() }
+
+    $content = Get-Content -Path $tomlPath -Raw
+    $required = @()
+    if ($content -match '(?m)^\s*aiProvider\s*=\s*"OLLAMA"') { $required += "Ollama" }
+    if ($content -match '(?m)^\s*ttsProvider\s*=\s*"KOKORO"') { $required += "Kokoro" }
+    if ($content -match '(?m)^\s*sttProvider\s*=\s*"WHISPER"') { $required += "Whisper" }
+    return $required
 }
 
 # A quick, non-throwing health check for a sidecar's HTTP endpoint.
@@ -127,14 +172,14 @@ function Test-OllamaModelPresent {
     }
 }
 
-# Installs (if needed) and starts the 3 local-AI sidecars, waiting for each
-# to answer a health check before returning. Shared host-wide - one set of
-# sidecars serves every Verity-enabled server on this machine.
-function Start-VerityLocalAiStack {
+# Installed once, shared host-wide under Minecraft/tools/ai/ - one Ollama/
+# Kokoro/Whisper instance serves every Verity-enabled server on this
+# machine. Each Start-<X>Sidecar is independent: a caller starts only the
+# ones a given server's config actually needs (see Get-VerityRequiredSidecars).
+function Start-OllamaSidecar {
     param(
         [Parameter(Mandatory = $true)][string]$McRoot
     )
-
     $scriptsDir = Join-Path $McRoot "scripts"
     $aiDir = Join-Path $McRoot "tools\ai"
     $logDir = Join-Path $aiDir "logs"
@@ -143,13 +188,6 @@ function Start-VerityLocalAiStack {
     if (-not (Test-Path (Join-Path $aiDir "ollama\ollama.exe"))) {
         & (Join-Path $scriptsDir "install-ollama.ps1")
     }
-    if (-not (Test-Path (Join-Path $aiDir "kokoro\kokoro_server.py"))) {
-        & (Join-Path $scriptsDir "install-kokoro.ps1")
-    }
-    if (-not (Test-Path (Join-Path $aiDir "whisper\whisper_server.py"))) {
-        & (Join-Path $scriptsDir "install-whisper.ps1")
-    }
-
     if (-not (Test-PortOpen -Port 11434)) {
         # Must match the OLLAMA_MODELS install-ollama.ps1 set in its own
         # process when it pulled verity-3b - otherwise this server (which
@@ -160,19 +198,10 @@ function Start-VerityLocalAiStack {
         Start-Process -FilePath (Join-Path $aiDir "ollama\ollama.exe") -ArgumentList "serve" -WindowStyle Hidden `
             -RedirectStandardOutput (Join-Path $logDir "ollama.log") -RedirectStandardError (Join-Path $logDir "ollama.err.log")
     }
-    $pythonExe = Join-Path $aiDir "python\python.exe"
-    if (-not (Test-PortOpen -Port 8880)) {
-        Start-Process -FilePath $pythonExe -ArgumentList "`"$(Join-Path $aiDir 'kokoro\kokoro_server.py')`"" -WindowStyle Hidden `
-            -RedirectStandardOutput (Join-Path $logDir "kokoro.log") -RedirectStandardError (Join-Path $logDir "kokoro.err.log")
-    }
-    if (-not (Test-PortOpen -Port 9000)) {
-        Start-Process -FilePath $pythonExe -ArgumentList "`"$(Join-Path $aiDir 'whisper\whisper_server.py')`"" -WindowStyle Hidden `
-            -RedirectStandardOutput (Join-Path $logDir "whisper.log") -RedirectStandardError (Join-Path $logDir "whisper.err.log")
-    }
 
-    # Ollama gets its own check: a 200 from /v1/models isn't enough, since a
-    # foreign Ollama already holding port 11434 (e.g. a system-wide install)
-    # answers the same way without verity-3b loaded. Confirm the model itself.
+    # A 200 from /v1/models isn't enough to know it's OUR Ollama - a
+    # pre-existing system-wide install (or any other Ollama already holding
+    # port 11434) answers the same way but won't have verity-3b loaded.
     $ollamaReady = $false
     for ($i = 0; $i -lt 30; $i++) {
         if (Test-OllamaModelPresent) { $ollamaReady = $true; break }
@@ -181,39 +210,135 @@ function Start-VerityLocalAiStack {
     if (-not $ollamaReady) {
         throw "Ollama is listening on port 11434 but the timheinrich2011/verity-3b model isn't loaded - looks like a different Ollama instance is already running on that port. Check $(Join-Path $logDir 'ollama.err.log'), or free port 11434 and try again."
     }
+}
 
-    $checks = @(
-        @{ Url = "http://127.0.0.1:8880/health"; Name = "Kokoro"; LogFile = "kokoro.err.log" },
-        @{ Url = "http://127.0.0.1:9000/health"; Name = "Whisper"; LogFile = "whisper.err.log" }
+function Start-KokoroSidecar {
+    param(
+        [Parameter(Mandatory = $true)][string]$McRoot
     )
-    foreach ($check in $checks) {
-        $ready = $false
-        for ($i = 0; $i -lt 30; $i++) {
-            if (Test-SidecarHealthy -Url $check.Url) { $ready = $true; break }
-            Start-Sleep -Seconds 1
-        }
-        if (-not $ready) {
-            throw "$($check.Name) didn't become ready within 30s - check $(Join-Path $logDir $check.LogFile)"
-        }
+    $scriptsDir = Join-Path $McRoot "scripts"
+    $aiDir = Join-Path $McRoot "tools\ai"
+    $logDir = Join-Path $aiDir "logs"
+    New-Item -ItemType Directory -Force -Path $logDir | Out-Null
+
+    if (-not (Test-Path (Join-Path $aiDir "kokoro\kokoro_server.py"))) {
+        & (Join-Path $scriptsDir "install-kokoro.ps1")
+    }
+    $pythonExe = Join-Path $aiDir "python\python.exe"
+    if (-not (Test-PortOpen -Port 8880)) {
+        Start-Process -FilePath $pythonExe -ArgumentList "`"$(Join-Path $aiDir 'kokoro\kokoro_server.py')`"" -WindowStyle Hidden `
+            -RedirectStandardOutput (Join-Path $logDir "kokoro.log") -RedirectStandardError (Join-Path $logDir "kokoro.err.log")
+    }
+
+    $ready = $false
+    for ($i = 0; $i -lt 30; $i++) {
+        if (Test-SidecarHealthy -Url "http://127.0.0.1:8880/health") { $ready = $true; break }
+        Start-Sleep -Seconds 1
+    }
+    if (-not $ready) {
+        throw "Kokoro didn't become ready within 30s - check $(Join-Path $logDir 'kokoro.err.log')"
     }
 }
 
-# Stops all 3 sidecars by whatever's listening on their ports.
-#
-# Ollama is only killed if verity-3b is confirmed loaded on port 11434 - this
-# function doesn't share in-memory state with the Start-Process call that may
-# (or may not) have launched it, so a plain "whatever owns the port" kill
-# would just as happily kill a pre-existing user-installed Ollama that
-# happened to already be running when the stack started. Kokoro/Whisper have
-# no such collision risk (nothing else on the system would be using those
-# ports), so they keep the simple by-port kill.
-function Stop-VerityLocalAiStack {
+function Start-WhisperSidecar {
+    param(
+        [Parameter(Mandatory = $true)][string]$McRoot
+    )
+    $scriptsDir = Join-Path $McRoot "scripts"
+    $aiDir = Join-Path $McRoot "tools\ai"
+    $logDir = Join-Path $aiDir "logs"
+    New-Item -ItemType Directory -Force -Path $logDir | Out-Null
+
+    if (-not (Test-Path (Join-Path $aiDir "whisper\whisper_server.py"))) {
+        & (Join-Path $scriptsDir "install-whisper.ps1")
+    }
+    $pythonExe = Join-Path $aiDir "python\python.exe"
+    if (-not (Test-PortOpen -Port 9000)) {
+        Start-Process -FilePath $pythonExe -ArgumentList "`"$(Join-Path $aiDir 'whisper\whisper_server.py')`"" -WindowStyle Hidden `
+            -RedirectStandardOutput (Join-Path $logDir "whisper.log") -RedirectStandardError (Join-Path $logDir "whisper.err.log")
+    }
+
+    $ready = $false
+    for ($i = 0; $i -lt 30; $i++) {
+        if (Test-SidecarHealthy -Url "http://127.0.0.1:9000/health") { $ready = $true; break }
+        Start-Sleep -Seconds 1
+    }
+    if (-not $ready) {
+        throw "Whisper didn't become ready within 30s - check $(Join-Path $logDir 'whisper.err.log')"
+    }
+}
+
+# Ollama is only killed if verity-3b is confirmed loaded on port 11434 -
+# this doesn't share in-memory state with whatever Start-Process call may
+# have launched it, so a plain "whatever owns the port" kill would just as
+# happily kill a pre-existing user-installed Ollama that happened to
+# already be running when the stack started.
+function Stop-OllamaSidecar {
     if (Test-OllamaModelPresent) {
         $ownerPid = Get-ListenerPid -Port 11434
         if ($ownerPid) { Stop-ProcessTree -ProcessId $ownerPid }
     }
-    foreach ($port in @(8880, 9000)) {
-        $ownerPid = Get-ListenerPid -Port $port
-        if ($ownerPid) { Stop-ProcessTree -ProcessId $ownerPid }
+}
+
+# Kokoro/Whisper have no such collision risk (nothing else on the system
+# would be using those ports), so they use a simple by-port kill.
+function Stop-KokoroSidecar {
+    $ownerPid = Get-ListenerPid -Port 8880
+    if ($ownerPid) { Stop-ProcessTree -ProcessId $ownerPid }
+}
+
+function Stop-WhisperSidecar {
+    $ownerPid = Get-ListenerPid -Port 9000
+    if ($ownerPid) { Stop-ProcessTree -ProcessId $ownerPid }
+}
+
+# Stops whichever of the 3 sidecars happen to be running - used by the
+# GUI's "Stop All" and by the boot-safety stop-on-close check, neither of
+# which needs to track which ones were actually started.
+function Stop-VerityLocalAiStack {
+    Stop-OllamaSidecar
+    Stop-KokoroSidecar
+    Stop-WhisperSidecar
+}
+
+# Every <Game>\servers\<Instance>\ folder under the GameServers root -
+# "_shared" is infrastructure, not a game; "_template" is the generic
+# scaffold, not a real instance. Same discovery rule as stop-server.ps1's
+# Get-AllServerInstances and gui-helpers.ps1's Get-ServerInstances.
+function Get-AllServerInstancePaths {
+    param(
+        [Parameter(Mandatory = $true)][string]$GsRoot
+    )
+    $result = @()
+    Get-ChildItem -Path $GsRoot -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -ne "_shared" } | ForEach-Object {
+        $serversDir = Join-Path $_.FullName "servers"
+        if (Test-Path $serversDir) {
+            Get-ChildItem -Path $serversDir -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -ne "_template" } | ForEach-Object {
+                $result += $_.FullName
+            }
+        }
     }
+    return $result
+}
+
+# The sidecars are shared host-wide - stopping them when ONE Verity server
+# closes would break AI for another Verity server still running. This
+# checks whether any other instance is both Verity-enabled and currently up
+# (by its Minecraft port, not RCON - RCON may be disabled) before it's safe
+# to stop the sidecars.
+function Test-OtherVerityServerRunning {
+    param(
+        [Parameter(Mandatory = $true)][string]$GsRoot,
+        [Parameter(Mandatory = $true)][string]$ExcludePath
+    )
+    foreach ($path in (Get-AllServerInstancePaths -GsRoot $GsRoot)) {
+        if ($path -eq $ExcludePath) { continue }
+        if (-not (Test-VerityModPresent -InstancePath $path)) { continue }
+
+        $props = Read-ServerProperties (Join-Path $path "server.properties")
+        $port = 25565
+        if ($props["server-port"]) { $port = [int]$props["server-port"] }
+        if (Test-PortOpen -Port $port) { return $true }
+    }
+    return $false
 }

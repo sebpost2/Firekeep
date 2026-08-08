@@ -45,3 +45,21 @@ Describe "New-ServerFromTemplate" {
         Remove-Item -Recurse -Force $mcRoot -ErrorAction SilentlyContinue
     }
 }
+
+Describe "Test-ServerNameValid" {
+    It "rejects a name with a space" {
+        Test-ServerNameValid -Name "Horror Ultimate" | Should Be $false
+    }
+
+    It "rejects a name with path-unsafe characters" {
+        Test-ServerNameValid -Name "My:Server" | Should Be $false
+    }
+
+    It "accepts a name with only letters, numbers, dashes and underscores" {
+        Test-ServerNameValid -Name "Horror-Ultimate_2" | Should Be $true
+    }
+
+    It "rejects an empty name" {
+        Test-ServerNameValid -Name "" | Should Be $false
+    }
+}

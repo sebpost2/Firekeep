@@ -21,11 +21,16 @@ Set-Content -Path $startLock -Value $PID -NoNewline
 
 . (Join-Path $gsRoot "_shared\scripts\verity-helpers.ps1")
 if (Test-VerityModPresent -InstancePath $PSScriptRoot) {
-    Write-Host "Verity mod detected - making sure the local AI stack (Ollama/Kokoro/Whisper) is up..."
-    try {
-        Start-VerityLocalAiStack -McRoot $mcRoot
-    } catch {
-        Write-Warning "Local AI stack didn't come up ($_) - starting the server anyway; Verity will fall back to its configured cloud provider."
+    $requiredSidecars = Get-VerityRequiredSidecars -InstancePath $PSScriptRoot
+    if ($requiredSidecars.Count -gt 0) {
+        Write-Host "Verity mod detected - making sure the local AI ($($requiredSidecars -join ', ')) is up..."
+        foreach ($service in $requiredSidecars) {
+            try {
+                & "Start-${service}Sidecar" -McRoot $mcRoot
+            } catch {
+                Write-Warning "$service didn't come up ($_) - starting the server anyway; Verity will fall back to its configured cloud provider for that piece."
+            }
+        }
     }
 }
 
@@ -119,6 +124,13 @@ finally {
     if ($tunnel -and -not $tunnel.HasExited) {
         Write-Host "Closing the playit.gg tunnel..."
         Stop-Process -Id $tunnel.Id -Force
+    }
+
+    if (Test-VerityModPresent -InstancePath $PSScriptRoot) {
+        if (-not (Test-OtherVerityServerRunning -GsRoot $gsRoot -ExcludePath $PSScriptRoot)) {
+            Write-Host "Stopping local AI (no other Verity server needs it)..."
+            Stop-VerityLocalAiStack
+        }
     }
 
     Remove-Item -Path $startLock -Force -ErrorAction SilentlyContinue
