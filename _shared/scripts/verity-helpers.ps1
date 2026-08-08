@@ -50,7 +50,9 @@ function Set-TomlSectionValue {
         }
         if ($inSection -and $trimmed -match "^$([regex]::Escape($Key))\s*=") {
             $leading = $line.Substring(0, $line.Length - $line.TrimStart().Length)
-            $result += "$leading$Key = `"$Value`""
+            # Escape backslashes first, then quotes, so the escaping backslash itself doesn't get double-escaped
+            $escaped = $Value -replace '\\', '\\' -replace '"', '\"'
+            $result += "$leading$Key = `"$escaped`""
             continue
         }
         $result += $line
@@ -58,10 +60,65 @@ function Set-TomlSectionValue {
     return $result
 }
 
-# Points one Verity subsystem (LLM/TTS/STT) at its local sidecar, or reverts
-# it to Verity's vanilla non-local default. config/verity-common.toml is the
-# single source of truth for which sidecars a server wants running - there's
-# no separate on/off state to keep in sync.
+# Same section/key matching as Set-TomlSectionValue, but for TOML booleans
+# (use_ollama/use_kokoro/use_local_whisper) - these must be written unquoted
+# (`true`/`false`), not as strings, or NightConfig reads them as the wrong type.
+function Set-TomlSectionBoolValue {
+    param(
+        [Parameter(Mandatory = $true)]$Lines,
+        [Parameter(Mandatory = $true)][string]$Section,
+        [Parameter(Mandatory = $true)][string]$Key,
+        [Parameter(Mandatory = $true)][bool]$Value
+    )
+
+    [string[]]$Lines = @($Lines)
+    $valueText = if ($Value) { "true" } else { "false" }
+
+    $result = @()
+    $inSection = $false
+    $sectionHeader = "[$Section]"
+
+    foreach ($line in $Lines) {
+        $trimmed = $line.Trim()
+        if ($trimmed -match '^\[.+\]$') {
+            $inSection = ($trimmed -eq $sectionHeader)
+            $result += $line
+            continue
+        }
+        if ($inSection -and $trimmed -match "^$([regex]::Escape($Key))\s*=") {
+            $leading = $line.Substring(0, $line.Length - $line.TrimStart().Length)
+            $result += "$leading$Key = $valueText"
+            continue
+        }
+        $result += $line
+    }
+    return $result
+}
+
+# This host runs Verity servers on two different config schemas: the older
+# one (Verity 6.1) nests everything under [GeneralSettings.*] with string-enum
+# providers, the newer one (5.7.1) uses a flat [AISettings] with booleans.
+# Returns $true for the old schema, $false for the new one, and throws if the
+# file matches neither - writing to a section that isn't there would silently
+# no-op. Section headers are matched as whole lines because the old header
+# textually contains the new one's name.
+function Test-VerityOldSchema {
+    param(
+        [Parameter(Mandatory = $true)][string]$Content,
+        [Parameter(Mandatory = $true)][string]$InstancePath
+    )
+    # \s*$ rather than a bare $ so a CRLF file's trailing \r doesn't defeat the anchor.
+    if ($Content -match '(?m)^\[GeneralSettings\.AISettings\]\s*$') { return $true }
+    if ($Content -match '(?m)^\[AISettings\]\s*$') { return $false }
+    throw "config\verity-common.toml under $InstancePath doesn't match a known Verity schema (no [AISettings] or [GeneralSettings.AISettings] section found)."
+}
+
+# Points one Verity subsystem (LLM/TTS/STT) at its local sidecar, or turns it
+# back off. All three toggles live in the same flat [AISettings] section (not
+# separate per-service sections) as booleans: use_ollama, use_kokoro,
+# use_local_whisper. config/verity-common.toml is the single source of truth
+# for which sidecars a server wants running - there's no separate on/off
+# state to keep in sync.
 function Set-VerityAiProvider {
     param(
         [Parameter(Mandatory = $true)][string]$InstancePath,
@@ -75,39 +132,48 @@ function Set-VerityAiProvider {
     }
 
     $lines = Get-Content -Path $tomlPath -Encoding utf8
+    $isOldSchema = Test-VerityOldSchema -Content ($lines -join "`n") -InstancePath $InstancePath
 
-    switch ($Service) {
-        "Ollama" {
-            if ($UseLocal) {
-                $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.AISettings" -Key "aiProvider" -Value "OLLAMA"
-                $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.AISettings" -Key "aiEndpoint" -Value "http://127.0.0.1:11434/v1"
-                $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.AISettings" -Key "aiModel" -Value "timheinrich2011/verity-3b"
-            } else {
-                $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.AISettings" -Key "aiProvider" -Value "OPENAI"
-                $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.AISettings" -Key "aiEndpoint" -Value ""
-                $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.AISettings" -Key "aiModel" -Value ""
+    if ($isOldSchema) {
+        switch ($Service) {
+            "Ollama" {
+                $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.AISettings" -Key "aiProvider" -Value $(if ($UseLocal) { "OLLAMA" } else { "OPENAI" })
+                $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.AISettings" -Key "aiEndpoint" -Value $(if ($UseLocal) { "http://127.0.0.1:11434/v1" } else { "" })
+                $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.AISettings" -Key "aiModel" -Value $(if ($UseLocal) { "timheinrich2011/verity-3b" } else { "" })
+            }
+            "Kokoro" {
+                $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.VoiceSettings" -Key "ttsProvider" -Value $(if ($UseLocal) { "KOKORO" } else { "NATIVE" })
+                $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.VoiceSettings" -Key "ttsEndpoint" -Value $(if ($UseLocal) { "http://127.0.0.1:8880/v1" } else { "" })
+                $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.VoiceSettings" -Key "kokoroModel" -Value $(if ($UseLocal) { "kokoro" } else { "" })
+            }
+            "Whisper" {
+                $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.SpeechSettings" -Key "sttProvider" -Value $(if ($UseLocal) { "WHISPER" } else { "NATIVE" })
+                $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.SpeechSettings" -Key "sttEndpoint" -Value $(if ($UseLocal) { "http://127.0.0.1:9000/v1" } else { "" })
+                $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.SpeechSettings" -Key "sttModel" -Value $(if ($UseLocal) { "base.en" } else { "" })
             }
         }
-        "Kokoro" {
-            if ($UseLocal) {
-                $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.VoiceSettings" -Key "ttsProvider" -Value "KOKORO"
-                $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.VoiceSettings" -Key "ttsEndpoint" -Value "http://127.0.0.1:8880/v1"
-                $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.VoiceSettings" -Key "kokoroModel" -Value "kokoro"
-            } else {
-                $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.VoiceSettings" -Key "ttsProvider" -Value "NATIVE"
-                $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.VoiceSettings" -Key "ttsEndpoint" -Value ""
-                $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.VoiceSettings" -Key "kokoroModel" -Value ""
+    } else {
+        switch ($Service) {
+            "Ollama" {
+                $lines = Set-TomlSectionBoolValue -Lines $lines -Section "AISettings" -Key "use_ollama" -Value $UseLocal
+                if ($UseLocal) {
+                    $lines = Set-TomlSectionValue -Lines $lines -Section "AISettings" -Key "ollama_url" -Value "http://127.0.0.1:11434/v1/"
+                    $lines = Set-TomlSectionValue -Lines $lines -Section "AISettings" -Key "ollama_ai_model" -Value "timheinrich2011/verity-3b"
+                }
             }
-        }
-        "Whisper" {
-            if ($UseLocal) {
-                $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.SpeechSettings" -Key "sttProvider" -Value "WHISPER"
-                $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.SpeechSettings" -Key "sttEndpoint" -Value "http://127.0.0.1:9000/v1"
-                $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.SpeechSettings" -Key "sttModel" -Value "base.en"
-            } else {
-                $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.SpeechSettings" -Key "sttProvider" -Value "NATIVE"
-                $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.SpeechSettings" -Key "sttEndpoint" -Value ""
-                $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.SpeechSettings" -Key "sttModel" -Value ""
+            "Kokoro" {
+                $lines = Set-TomlSectionBoolValue -Lines $lines -Section "AISettings" -Key "use_kokoro" -Value $UseLocal
+                if ($UseLocal) {
+                    $lines = Set-TomlSectionValue -Lines $lines -Section "AISettings" -Key "ollama_tts_url" -Value "http://127.0.0.1:8880/v1/"
+                    $lines = Set-TomlSectionValue -Lines $lines -Section "AISettings" -Key "ollama_tts_model" -Value "kokoro"
+                }
+            }
+            "Whisper" {
+                $lines = Set-TomlSectionBoolValue -Lines $lines -Section "AISettings" -Key "use_local_whisper" -Value $UseLocal
+                if ($UseLocal) {
+                    $lines = Set-TomlSectionValue -Lines $lines -Section "AISettings" -Key "ollama_stt_url" -Value "http://127.0.0.1:9000/v1/"
+                    $lines = Set-TomlSectionValue -Lines $lines -Section "AISettings" -Key "ollama_stt_model" -Value "base.en"
+                }
             }
         }
     }
@@ -132,10 +198,54 @@ function Get-VerityRequiredSidecars {
 
     $content = Get-Content -Path $tomlPath -Raw
     $required = @()
-    if ($content -match '(?m)^\s*aiProvider\s*=\s*"OLLAMA"') { $required += "Ollama" }
-    if ($content -match '(?m)^\s*ttsProvider\s*=\s*"KOKORO"') { $required += "Kokoro" }
-    if ($content -match '(?m)^\s*sttProvider\s*=\s*"WHISPER"') { $required += "Whisper" }
+    # Each sidecar has two "enabled" spellings - the new flat-boolean schema's
+    # and the old nested schema's string-enum provider (see Test-VerityOldSchema).
+    if ($content -match '(?m)^\s*use_ollama\s*=\s*true' -or $content -match '(?m)^\s*aiProvider\s*=\s*"OLLAMA"') { $required += "Ollama" }
+    if ($content -match '(?m)^\s*use_kokoro\s*=\s*true' -or $content -match '(?m)^\s*ttsProvider\s*=\s*"KOKORO"') { $required += "Kokoro" }
+    if ($content -match '(?m)^\s*use_local_whisper\s*=\s*true' -or $content -match '(?m)^\s*sttProvider\s*=\s*"WHISPER"') { $required += "Whisper" }
     return $required
+}
+
+# Reads the currently saved Groq API key (or "" if unset/missing config) -
+# used to pre-fill the GUI's API key field so it reflects what's actually
+# saved instead of always starting blank.
+function Get-VerityApiKey {
+    param(
+        [Parameter(Mandatory = $true)][string]$InstancePath
+    )
+    $tomlPath = Join-Path $InstancePath "config\verity-common.toml"
+    if (-not (Test-Path $tomlPath)) { return "" }
+
+    $content = Get-Content -Path $tomlPath -Raw
+    # Match quoted string, allowing escaped characters (\\ and \")
+    if ($content -match '(?m)^\s*apiKey\s*=\s*"((?:\\.|[^"\\])*)"') {
+        # Unescape: \\ becomes \, \" becomes ", etc.
+        return $Matches[1] -replace '\\(.)', '$1'
+    }
+    return ""
+}
+
+# Persists the Groq API key entered in the GUI. Independent of
+# Set-VerityAiProvider - apiKey is used for the cloud-fallback path and
+# isn't touched by the Ollama/Kokoro/Whisper local-AI toggles.
+function Set-VerityApiKey {
+    param(
+        [Parameter(Mandatory = $true)][string]$InstancePath,
+        [Parameter(Mandatory = $true)][AllowEmptyString()][string]$ApiKey
+    )
+
+    $tomlPath = Join-Path $InstancePath "config\verity-common.toml"
+    if (-not (Test-Path $tomlPath)) {
+        throw "Could not find config\verity-common.toml under $InstancePath - is Verity actually installed on this server?"
+    }
+
+    $lines = Get-Content -Path $tomlPath -Encoding utf8
+    # Same key name in both schemas - only the enclosing section differs.
+    $section = if (Test-VerityOldSchema -Content ($lines -join "`n") -InstancePath $InstancePath) { "GeneralSettings.AISettings" } else { "AISettings" }
+    $lines = Set-TomlSectionValue -Lines $lines -Section $section -Key "apiKey" -Value $ApiKey
+
+    $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+    [System.IO.File]::WriteAllLines($tomlPath, $lines, $utf8NoBom)
 }
 
 # A quick, non-throwing health check for a sidecar's HTTP endpoint.
