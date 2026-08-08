@@ -58,6 +58,41 @@ function Set-TomlSectionValue {
     return $result
 }
 
+# Same section/key matching as Set-TomlSectionValue, but for TOML booleans
+# (use_ollama/use_kokoro/use_local_whisper) - these must be written unquoted
+# (`true`/`false`), not as strings, or NightConfig reads them as the wrong type.
+function Set-TomlSectionBoolValue {
+    param(
+        [Parameter(Mandatory = $true)]$Lines,
+        [Parameter(Mandatory = $true)][string]$Section,
+        [Parameter(Mandatory = $true)][string]$Key,
+        [Parameter(Mandatory = $true)][bool]$Value
+    )
+
+    [string[]]$Lines = @($Lines)
+    $valueText = if ($Value) { "true" } else { "false" }
+
+    $result = @()
+    $inSection = $false
+    $sectionHeader = "[$Section]"
+
+    foreach ($line in $Lines) {
+        $trimmed = $line.Trim()
+        if ($trimmed -match '^\[.+\]$') {
+            $inSection = ($trimmed -eq $sectionHeader)
+            $result += $line
+            continue
+        }
+        if ($inSection -and $trimmed -match "^$([regex]::Escape($Key))\s*=") {
+            $leading = $line.Substring(0, $line.Length - $line.TrimStart().Length)
+            $result += "$leading$Key = $valueText"
+            continue
+        }
+        $result += $line
+    }
+    return $result
+}
+
 # Points one Verity subsystem (LLM/TTS/STT) at its local sidecar, or reverts
 # it to Verity's vanilla non-local default. config/verity-common.toml is the
 # single source of truth for which sidecars a server wants running - there's

@@ -61,6 +61,39 @@ Describe "Set-TomlSectionValue" {
     }
 }
 
+Describe "Set-TomlSectionBoolValue" {
+
+    $sampleToml = @(
+        '[AISettings]',
+        "`tuse_ollama = false",
+        "`tuse_kokoro = false",
+        '',
+        '[Custom]',
+        "`tsomeOtherFlag = true"
+    )
+
+    It "replaces a key's value only within the matching section" {
+        $result = Set-TomlSectionBoolValue -Lines $sampleToml -Section "AISettings" -Key "use_ollama" -Value $true
+        ($result | Where-Object { $_ -match '^\s*use_ollama\s*=' }) | Should Be "`tuse_ollama = true"
+    }
+
+    It "leaves a key in a different section untouched" {
+        $result = Set-TomlSectionBoolValue -Lines $sampleToml -Section "AISettings" -Key "use_kokoro" -Value $true
+        ($result | Where-Object { $_ -match '^\s*someOtherFlag\s*=' }) | Should Be "`tsomeOtherFlag = true"
+    }
+
+    It "preserves every other line unchanged" {
+        $result = Set-TomlSectionBoolValue -Lines $sampleToml -Section "AISettings" -Key "use_ollama" -Value $true
+        $result.Count | Should Be $sampleToml.Count
+        $result[0] | Should Be '[AISettings]'
+    }
+
+    It "writes false unquoted" {
+        $result = Set-TomlSectionBoolValue -Lines $sampleToml -Section "AISettings" -Key "use_kokoro" -Value $false
+        ($result | Where-Object { $_ -match '^\s*use_kokoro\s*=' }) | Should Be "`tuse_kokoro = false"
+    }
+}
+
 Describe "Set-VerityAiProvider" {
 
     $root = Join-Path $env:TEMP ("verity-provider-" + [Guid]::NewGuid().ToString("N"))
