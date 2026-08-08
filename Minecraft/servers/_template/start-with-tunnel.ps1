@@ -4,6 +4,13 @@
 $serverName = Split-Path $PSScriptRoot -Leaf
 $mcRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $gsRoot = Split-Path -Parent $mcRoot
+
+. (Join-Path $gsRoot "_shared\scripts\verity-helpers.ps1")
+if (Test-VerityModPresent -InstancePath $PSScriptRoot) {
+    Write-Host "Verity mod detected - making sure the local AI stack (Ollama/Kokoro/Whisper) is up..."
+    Start-VerityLocalAiStack -McRoot $mcRoot
+}
+
 $toolDir = Join-Path $gsRoot "_shared\tools\playit"
 $playitExe = Join-Path $toolDir "playit.exe"
 $secretFile = Join-Path $toolDir "secret.key"
