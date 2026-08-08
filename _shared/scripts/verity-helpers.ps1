@@ -262,22 +262,35 @@ function Start-WhisperSidecar {
     }
 }
 
-# Stops all 3 sidecars by whatever's listening on their ports.
-#
-# Ollama is only killed if verity-3b is confirmed loaded on port 11434 - this
-# function doesn't share in-memory state with the Start-Process call that may
-# (or may not) have launched it, so a plain "whatever owns the port" kill
-# would just as happily kill a pre-existing user-installed Ollama that
-# happened to already be running when the stack started. Kokoro/Whisper have
-# no such collision risk (nothing else on the system would be using those
-# ports), so they keep the simple by-port kill.
-function Stop-VerityLocalAiStack {
+# Ollama is only killed if verity-3b is confirmed loaded on port 11434 -
+# this doesn't share in-memory state with whatever Start-Process call may
+# have launched it, so a plain "whatever owns the port" kill would just as
+# happily kill a pre-existing user-installed Ollama that happened to
+# already be running when the stack started.
+function Stop-OllamaSidecar {
     if (Test-OllamaModelPresent) {
         $ownerPid = Get-ListenerPid -Port 11434
         if ($ownerPid) { Stop-ProcessTree -ProcessId $ownerPid }
     }
-    foreach ($port in @(8880, 9000)) {
-        $ownerPid = Get-ListenerPid -Port $port
-        if ($ownerPid) { Stop-ProcessTree -ProcessId $ownerPid }
-    }
+}
+
+# Kokoro/Whisper have no such collision risk (nothing else on the system
+# would be using those ports), so they use a simple by-port kill.
+function Stop-KokoroSidecar {
+    $ownerPid = Get-ListenerPid -Port 8880
+    if ($ownerPid) { Stop-ProcessTree -ProcessId $ownerPid }
+}
+
+function Stop-WhisperSidecar {
+    $ownerPid = Get-ListenerPid -Port 9000
+    if ($ownerPid) { Stop-ProcessTree -ProcessId $ownerPid }
+}
+
+# Stops whichever of the 3 sidecars happen to be running - used by the
+# GUI's "Stop All" and by the boot-safety stop-on-close check, neither of
+# which needs to track which ones were actually started.
+function Stop-VerityLocalAiStack {
+    Stop-OllamaSidecar
+    Stop-KokoroSidecar
+    Stop-WhisperSidecar
 }
