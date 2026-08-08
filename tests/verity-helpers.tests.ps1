@@ -39,7 +39,6 @@ Describe "Set-TomlSectionValue" {
         "`taiKey = `"`"",
         "`taiEndpoint = `"`"",
         "`taiProvider = `"OPENAI`"",
-        '',
         '[GeneralSettings.VoiceSettings]',
         "`tttsProvider = `"NATIVE`""
     )

@@ -22,7 +22,7 @@ function Test-VerityModPresent {
 # brackets (e.g. "GeneralSettings.AISettings" for "[GeneralSettings.AISettings]").
 function Set-TomlSectionValue {
     param(
-        [Parameter(Mandatory = $true)]$Lines,
+        [Parameter(Mandatory = $true)][string[]]$Lines,
         [Parameter(Mandatory = $true)][string]$Section,
         [Parameter(Mandatory = $true)][string]$Key,
         [Parameter(Mandatory = $true)][string]$Value
