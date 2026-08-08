@@ -101,26 +101,24 @@ Describe "Set-VerityAiProvider" {
     function New-FakeVerityInstance([string]$Path) {
         New-Item -ItemType Directory -Force -Path (Join-Path $Path "config") | Out-Null
         @'
-[GeneralSettings.AISettings]
-	apiKey = ""
-	aiEndpoint = ""
-	aiModel = ""
-	aiProvider = "OPENAI"
-	aiThink = true
-
-[GeneralSettings.VoiceSettings]
-	useTTS = true
-	ttsProvider = "NATIVE"
-	ttsEndpoint = ""
+[AISettings]
 	voice = "Daniel"
-	kokoroVoice = "am_fenrir"
-	kokoroModel = ""
-
-[GeneralSettings.SpeechSettings]
-	sttProvider = "NATIVE"
-	groqKey = ""
-	sttEndpoint = ""
-	sttModel = ""
+	useLocalTts = true
+	useLocalStt = false
+	apiKey = ""
+	aiModel = "FAST"
+	aiProvider = "GROQ"
+	use_ollama = false
+	ollama_url = "http://127.0.0.1:4000/v1/"
+	ollama_ai_model = "ollama/qwen2.5:1.5b"
+	thinking_mode = false
+	use_kokoro = false
+	ollama_tts_url = "http://127.0.0.1:8880/v1/"
+	ollama_tts_model = "kokoro"
+	ollama_tts_voice = "am_fenrir"
+	use_local_whisper = false
+	ollama_stt_url = "http://127.0.0.1:9000/v1/"
+	ollama_stt_model = "models/ggml-large-v3-turbo.bin"
 '@ | Set-Content -Path (Join-Path $Path "config\verity-common.toml") -Encoding utf8
     }
 
@@ -129,60 +127,57 @@ Describe "Set-VerityAiProvider" {
         New-FakeVerityInstance -Path $inst
         Set-VerityAiProvider -InstancePath $inst -Service "Ollama" -UseLocal $true
         $content = Get-Content (Join-Path $inst "config\verity-common.toml") -Raw
-        $content | Should Match 'aiProvider = "OLLAMA"'
-        $content | Should Match 'aiEndpoint = "http://127\.0\.0\.1:11434/v1"'
-        $content | Should Match 'aiModel = "timheinrich2011/verity-3b"'
+        $content | Should Match 'use_ollama = true'
+        $content | Should Match 'ollama_url = "http://127\.0\.0\.1:11434/v1/"'
+        $content | Should Match 'ollama_ai_model = "timheinrich2011/verity-3b"'
     }
 
-    It "reverts aiProvider to OPENAI when UseLocal is false" {
+    It "clears use_ollama when UseLocal is false, without touching url/model" {
         $inst = Join-Path $root "ollama-off"
         New-FakeVerityInstance -Path $inst
         Set-VerityAiProvider -InstancePath $inst -Service "Ollama" -UseLocal $true
         Set-VerityAiProvider -InstancePath $inst -Service "Ollama" -UseLocal $false
         $content = Get-Content (Join-Path $inst "config\verity-common.toml") -Raw
-        $content | Should Match 'aiProvider = "OPENAI"'
-        $content | Should Match 'aiEndpoint = ""'
-        $content | Should Match 'aiModel = ""'
+        $content | Should Match 'use_ollama = false'
+        $content | Should Match 'ollama_url = "http://127\.0\.0\.1:11434/v1/"'
     }
 
-    It "points VoiceSettings at the local Kokoro sidecar when UseLocal is true" {
+    It "points AISettings at the local Kokoro sidecar when UseLocal is true" {
         $inst = Join-Path $root "kokoro-on"
         New-FakeVerityInstance -Path $inst
         Set-VerityAiProvider -InstancePath $inst -Service "Kokoro" -UseLocal $true
         $content = Get-Content (Join-Path $inst "config\verity-common.toml") -Raw
-        $content | Should Match 'ttsProvider = "KOKORO"'
-        $content | Should Match 'ttsEndpoint = "http://127\.0\.0\.1:8880/v1"'
+        $content | Should Match 'use_kokoro = true'
+        $content | Should Match 'ollama_tts_url = "http://127\.0\.0\.1:8880/v1/"'
+        $content | Should Match 'ollama_tts_model = "kokoro"'
     }
 
-    It "reverts ttsProvider to NATIVE when UseLocal is false" {
+    It "clears use_kokoro when UseLocal is false" {
         $inst = Join-Path $root "kokoro-off"
         New-FakeVerityInstance -Path $inst
         Set-VerityAiProvider -InstancePath $inst -Service "Kokoro" -UseLocal $true
         Set-VerityAiProvider -InstancePath $inst -Service "Kokoro" -UseLocal $false
         $content = Get-Content (Join-Path $inst "config\verity-common.toml") -Raw
-        $content | Should Match 'ttsProvider = "NATIVE"'
-        $content | Should Match 'ttsEndpoint = ""'
-        $content | Should Match 'kokoroModel = ""'
+        $content | Should Match 'use_kokoro = false'
     }
 
-    It "points SpeechSettings at the local Whisper sidecar when UseLocal is true" {
+    It "points AISettings at the local Whisper sidecar when UseLocal is true" {
         $inst = Join-Path $root "whisper-on"
         New-FakeVerityInstance -Path $inst
         Set-VerityAiProvider -InstancePath $inst -Service "Whisper" -UseLocal $true
         $content = Get-Content (Join-Path $inst "config\verity-common.toml") -Raw
-        $content | Should Match 'sttProvider = "WHISPER"'
-        $content | Should Match 'sttEndpoint = "http://127\.0\.0\.1:9000/v1"'
+        $content | Should Match 'use_local_whisper = true'
+        $content | Should Match 'ollama_stt_url = "http://127\.0\.0\.1:9000/v1/"'
+        $content | Should Match 'ollama_stt_model = "base.en"'
     }
 
-    It "reverts sttProvider to NATIVE when UseLocal is false" {
+    It "clears use_local_whisper when UseLocal is false" {
         $inst = Join-Path $root "whisper-off"
         New-FakeVerityInstance -Path $inst
         Set-VerityAiProvider -InstancePath $inst -Service "Whisper" -UseLocal $true
         Set-VerityAiProvider -InstancePath $inst -Service "Whisper" -UseLocal $false
         $content = Get-Content (Join-Path $inst "config\verity-common.toml") -Raw
-        $content | Should Match 'sttProvider = "NATIVE"'
-        $content | Should Match 'sttEndpoint = ""'
-        $content | Should Match 'sttModel = ""'
+        $content | Should Match 'use_local_whisper = false'
     }
 
     It "throws a clear error when verity-common.toml doesn't exist" {

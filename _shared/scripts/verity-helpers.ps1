@@ -93,10 +93,12 @@ function Set-TomlSectionBoolValue {
     return $result
 }
 
-# Points one Verity subsystem (LLM/TTS/STT) at its local sidecar, or reverts
-# it to Verity's vanilla non-local default. config/verity-common.toml is the
-# single source of truth for which sidecars a server wants running - there's
-# no separate on/off state to keep in sync.
+# Points one Verity subsystem (LLM/TTS/STT) at its local sidecar, or turns it
+# back off. All three toggles live in the same flat [AISettings] section (not
+# separate per-service sections) as booleans: use_ollama, use_kokoro,
+# use_local_whisper. config/verity-common.toml is the single source of truth
+# for which sidecars a server wants running - there's no separate on/off
+# state to keep in sync.
 function Set-VerityAiProvider {
     param(
         [Parameter(Mandatory = $true)][string]$InstancePath,
@@ -113,36 +115,24 @@ function Set-VerityAiProvider {
 
     switch ($Service) {
         "Ollama" {
+            $lines = Set-TomlSectionBoolValue -Lines $lines -Section "AISettings" -Key "use_ollama" -Value $UseLocal
             if ($UseLocal) {
-                $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.AISettings" -Key "aiProvider" -Value "OLLAMA"
-                $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.AISettings" -Key "aiEndpoint" -Value "http://127.0.0.1:11434/v1"
-                $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.AISettings" -Key "aiModel" -Value "timheinrich2011/verity-3b"
-            } else {
-                $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.AISettings" -Key "aiProvider" -Value "OPENAI"
-                $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.AISettings" -Key "aiEndpoint" -Value ""
-                $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.AISettings" -Key "aiModel" -Value ""
+                $lines = Set-TomlSectionValue -Lines $lines -Section "AISettings" -Key "ollama_url" -Value "http://127.0.0.1:11434/v1/"
+                $lines = Set-TomlSectionValue -Lines $lines -Section "AISettings" -Key "ollama_ai_model" -Value "timheinrich2011/verity-3b"
             }
         }
         "Kokoro" {
+            $lines = Set-TomlSectionBoolValue -Lines $lines -Section "AISettings" -Key "use_kokoro" -Value $UseLocal
             if ($UseLocal) {
-                $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.VoiceSettings" -Key "ttsProvider" -Value "KOKORO"
-                $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.VoiceSettings" -Key "ttsEndpoint" -Value "http://127.0.0.1:8880/v1"
-                $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.VoiceSettings" -Key "kokoroModel" -Value "kokoro"
-            } else {
-                $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.VoiceSettings" -Key "ttsProvider" -Value "NATIVE"
-                $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.VoiceSettings" -Key "ttsEndpoint" -Value ""
-                $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.VoiceSettings" -Key "kokoroModel" -Value ""
+                $lines = Set-TomlSectionValue -Lines $lines -Section "AISettings" -Key "ollama_tts_url" -Value "http://127.0.0.1:8880/v1/"
+                $lines = Set-TomlSectionValue -Lines $lines -Section "AISettings" -Key "ollama_tts_model" -Value "kokoro"
             }
         }
         "Whisper" {
+            $lines = Set-TomlSectionBoolValue -Lines $lines -Section "AISettings" -Key "use_local_whisper" -Value $UseLocal
             if ($UseLocal) {
-                $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.SpeechSettings" -Key "sttProvider" -Value "WHISPER"
-                $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.SpeechSettings" -Key "sttEndpoint" -Value "http://127.0.0.1:9000/v1"
-                $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.SpeechSettings" -Key "sttModel" -Value "base.en"
-            } else {
-                $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.SpeechSettings" -Key "sttProvider" -Value "NATIVE"
-                $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.SpeechSettings" -Key "sttEndpoint" -Value ""
-                $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.SpeechSettings" -Key "sttModel" -Value ""
+                $lines = Set-TomlSectionValue -Lines $lines -Section "AISettings" -Key "ollama_stt_url" -Value "http://127.0.0.1:9000/v1/"
+                $lines = Set-TomlSectionValue -Lines $lines -Section "AISettings" -Key "ollama_stt_model" -Value "base.en"
             }
         }
     }
