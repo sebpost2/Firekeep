@@ -8,9 +8,16 @@
 $mcRoot = Split-Path -Parent $PSScriptRoot
 $pythonDir = Join-Path $mcRoot "tools\ai\python"
 
-if (Test-Path (Join-Path $pythonDir "python.exe")) {
-    Write-Host "AI Python runtime already installed at $pythonDir"
-    exit 0
+$pythonExe = Join-Path $pythonDir "python.exe"
+if (Test-Path $pythonExe) {
+    # Verify pip actually works before skipping install; if pip bootstrap failed
+    # partway, python.exe exists but pip is broken. Only exit early if both exist
+    # and pip is functional.
+    & $pythonExe -m pip --version 2>$null
+    if ($?) {
+        Write-Host "AI Python runtime already installed at $pythonDir"
+        exit 0
+    }
 }
 
 New-Item -ItemType Directory -Force -Path $pythonDir | Out-Null
