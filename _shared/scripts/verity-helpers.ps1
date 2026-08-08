@@ -50,7 +50,9 @@ function Set-TomlSectionValue {
         }
         if ($inSection -and $trimmed -match "^$([regex]::Escape($Key))\s*=") {
             $leading = $line.Substring(0, $line.Length - $line.TrimStart().Length)
-            $result += "$leading$Key = `"$Value`""
+            # Escape backslashes first, then quotes, so the escaping backslash itself doesn't get double-escaped
+            $escaped = $Value -replace '\\', '\\\\' -replace '"', '\"'
+            $result += "$leading$Key = `"$escaped`""
             continue
         }
         $result += $line
@@ -174,7 +176,11 @@ function Get-VerityApiKey {
     if (-not (Test-Path $tomlPath)) { return "" }
 
     $content = Get-Content -Path $tomlPath -Raw
-    if ($content -match '(?m)^\s*apiKey\s*=\s*"([^"]*)"') { return $Matches[1] }
+    # Match quoted string, allowing escaped characters (\\ and \")
+    if ($content -match '(?m)^\s*apiKey\s*=\s*"((?:\\.|[^"\\])*)"') {
+        # Unescape: \\ becomes \, \" becomes ", etc.
+        return $Matches[1] -replace '\\(.)', '$1'
+    }
     return ""
 }
 

@@ -59,6 +59,12 @@ Describe "Set-TomlSectionValue" {
         $result.Count | Should Be $sampleToml.Count
         $result[0] | Should Be '[GeneralSettings.AISettings]'
     }
+
+    It "escapes quotes and backslashes in values" {
+        $value = 'test"quote'
+        $result = Set-TomlSectionValue -Lines $sampleToml -Section "GeneralSettings.AISettings" -Key "aiProvider" -Value $value
+        ($result | Where-Object { $_ -match '^\s*aiProvider\s*=' }) | Should Match 'aiProvider = "test\\"quote"'
+    }
 }
 
 Describe "Set-TomlSectionBoolValue" {
@@ -299,6 +305,14 @@ Describe "Set-VerityApiKey" {
         $inst = Join-Path $root "no-config"
         New-Item -ItemType Directory -Force -Path $inst | Out-Null
         { Set-VerityApiKey -InstancePath $inst -ApiKey "x" } | Should Throw
+    }
+
+    It "round-trips a key containing a quote character unchanged" {
+        $inst = Join-Path $root "quoted-key"
+        New-FakeVerityInstance -Path $inst
+        $keyWithQuote = 'gsk_test"value'
+        Set-VerityApiKey -InstancePath $inst -ApiKey $keyWithQuote
+        (Get-VerityApiKey -InstancePath $inst) | Should Be $keyWithQuote
     }
 
     Remove-Item -Recurse -Force $root -ErrorAction SilentlyContinue
