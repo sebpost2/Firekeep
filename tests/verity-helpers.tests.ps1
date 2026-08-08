@@ -139,15 +139,24 @@ Describe "Test-SidecarHealthy" {
         $listener.Prefixes.Add("http://127.0.0.1:39282/")
         $listener.Start()
         try {
-            $job = Start-Job -ScriptBlock {
-                param($listener)
-                $ctx = $listener.GetContext()
-                $ctx.Response.StatusCode = 200
-                $ctx.Response.Close()
-            } -ArgumentList $listener
+            $helperScriptPath = Join-Path (Split-Path -Parent $PSScriptRoot) "_shared\scripts\verity-helpers.ps1"
 
-            Test-SidecarHealthy -Url "http://127.0.0.1:39282/health" -TimeoutMs 3000 | Should Be $true
-            Wait-Job $job -Timeout 5 | Out-Null
+            # Run Test-SidecarHealthy inside the job; keep the live listener on the main thread
+            $job = Start-Job -ScriptBlock {
+                param($Url, $HelperPath)
+                . $HelperPath
+                Test-SidecarHealthy -Url $Url -TimeoutMs 3000
+            } -ArgumentList "http://127.0.0.1:39282/health", $helperScriptPath
+
+            # Accept the HTTP request on the main thread (where the listener is live)
+            $ctx = $listener.GetContext()
+            $ctx.Response.StatusCode = 200
+            $ctx.Response.Close()
+
+            # Get the result from the job
+            $result = Receive-Job -Job $job -Wait
+            $result | Should Be $true
+
             Remove-Job $job -Force
         } finally {
             $listener.Stop()
