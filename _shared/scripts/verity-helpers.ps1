@@ -166,14 +166,14 @@ function Test-OllamaModelPresent {
     }
 }
 
-# Installs (if needed) and starts the 3 local-AI sidecars, waiting for each
-# to answer a health check before returning. Shared host-wide - one set of
-# sidecars serves every Verity-enabled server on this machine.
-function Start-VerityLocalAiStack {
+# Installed once, shared host-wide under Minecraft/tools/ai/ - one Ollama/
+# Kokoro/Whisper instance serves every Verity-enabled server on this
+# machine. Each Start-<X>Sidecar is independent: a caller starts only the
+# ones a given server's config actually needs (see Get-VerityRequiredSidecars).
+function Start-OllamaSidecar {
     param(
         [Parameter(Mandatory = $true)][string]$McRoot
     )
-
     $scriptsDir = Join-Path $McRoot "scripts"
     $aiDir = Join-Path $McRoot "tools\ai"
     $logDir = Join-Path $aiDir "logs"
@@ -182,13 +182,6 @@ function Start-VerityLocalAiStack {
     if (-not (Test-Path (Join-Path $aiDir "ollama\ollama.exe"))) {
         & (Join-Path $scriptsDir "install-ollama.ps1")
     }
-    if (-not (Test-Path (Join-Path $aiDir "kokoro\kokoro_server.py"))) {
-        & (Join-Path $scriptsDir "install-kokoro.ps1")
-    }
-    if (-not (Test-Path (Join-Path $aiDir "whisper\whisper_server.py"))) {
-        & (Join-Path $scriptsDir "install-whisper.ps1")
-    }
-
     if (-not (Test-PortOpen -Port 11434)) {
         # Must match the OLLAMA_MODELS install-ollama.ps1 set in its own
         # process when it pulled verity-3b - otherwise this server (which
@@ -199,19 +192,10 @@ function Start-VerityLocalAiStack {
         Start-Process -FilePath (Join-Path $aiDir "ollama\ollama.exe") -ArgumentList "serve" -WindowStyle Hidden `
             -RedirectStandardOutput (Join-Path $logDir "ollama.log") -RedirectStandardError (Join-Path $logDir "ollama.err.log")
     }
-    $pythonExe = Join-Path $aiDir "python\python.exe"
-    if (-not (Test-PortOpen -Port 8880)) {
-        Start-Process -FilePath $pythonExe -ArgumentList "`"$(Join-Path $aiDir 'kokoro\kokoro_server.py')`"" -WindowStyle Hidden `
-            -RedirectStandardOutput (Join-Path $logDir "kokoro.log") -RedirectStandardError (Join-Path $logDir "kokoro.err.log")
-    }
-    if (-not (Test-PortOpen -Port 9000)) {
-        Start-Process -FilePath $pythonExe -ArgumentList "`"$(Join-Path $aiDir 'whisper\whisper_server.py')`"" -WindowStyle Hidden `
-            -RedirectStandardOutput (Join-Path $logDir "whisper.log") -RedirectStandardError (Join-Path $logDir "whisper.err.log")
-    }
 
-    # Ollama gets its own check: a 200 from /v1/models isn't enough, since a
-    # foreign Ollama already holding port 11434 (e.g. a system-wide install)
-    # answers the same way without verity-3b loaded. Confirm the model itself.
+    # A 200 from /v1/models isn't enough to know it's OUR Ollama - a
+    # pre-existing system-wide install (or any other Ollama already holding
+    # port 11434) answers the same way but won't have verity-3b loaded.
     $ollamaReady = $false
     for ($i = 0; $i -lt 30; $i++) {
         if (Test-OllamaModelPresent) { $ollamaReady = $true; break }
@@ -220,20 +204,61 @@ function Start-VerityLocalAiStack {
     if (-not $ollamaReady) {
         throw "Ollama is listening on port 11434 but the timheinrich2011/verity-3b model isn't loaded - looks like a different Ollama instance is already running on that port. Check $(Join-Path $logDir 'ollama.err.log'), or free port 11434 and try again."
     }
+}
 
-    $checks = @(
-        @{ Url = "http://127.0.0.1:8880/health"; Name = "Kokoro"; LogFile = "kokoro.err.log" },
-        @{ Url = "http://127.0.0.1:9000/health"; Name = "Whisper"; LogFile = "whisper.err.log" }
+function Start-KokoroSidecar {
+    param(
+        [Parameter(Mandatory = $true)][string]$McRoot
     )
-    foreach ($check in $checks) {
-        $ready = $false
-        for ($i = 0; $i -lt 30; $i++) {
-            if (Test-SidecarHealthy -Url $check.Url) { $ready = $true; break }
-            Start-Sleep -Seconds 1
-        }
-        if (-not $ready) {
-            throw "$($check.Name) didn't become ready within 30s - check $(Join-Path $logDir $check.LogFile)"
-        }
+    $scriptsDir = Join-Path $McRoot "scripts"
+    $aiDir = Join-Path $McRoot "tools\ai"
+    $logDir = Join-Path $aiDir "logs"
+    New-Item -ItemType Directory -Force -Path $logDir | Out-Null
+
+    if (-not (Test-Path (Join-Path $aiDir "kokoro\kokoro_server.py"))) {
+        & (Join-Path $scriptsDir "install-kokoro.ps1")
+    }
+    $pythonExe = Join-Path $aiDir "python\python.exe"
+    if (-not (Test-PortOpen -Port 8880)) {
+        Start-Process -FilePath $pythonExe -ArgumentList "`"$(Join-Path $aiDir 'kokoro\kokoro_server.py')`"" -WindowStyle Hidden `
+            -RedirectStandardOutput (Join-Path $logDir "kokoro.log") -RedirectStandardError (Join-Path $logDir "kokoro.err.log")
+    }
+
+    $ready = $false
+    for ($i = 0; $i -lt 30; $i++) {
+        if (Test-SidecarHealthy -Url "http://127.0.0.1:8880/health") { $ready = $true; break }
+        Start-Sleep -Seconds 1
+    }
+    if (-not $ready) {
+        throw "Kokoro didn't become ready within 30s - check $(Join-Path $logDir 'kokoro.err.log')"
+    }
+}
+
+function Start-WhisperSidecar {
+    param(
+        [Parameter(Mandatory = $true)][string]$McRoot
+    )
+    $scriptsDir = Join-Path $McRoot "scripts"
+    $aiDir = Join-Path $McRoot "tools\ai"
+    $logDir = Join-Path $aiDir "logs"
+    New-Item -ItemType Directory -Force -Path $logDir | Out-Null
+
+    if (-not (Test-Path (Join-Path $aiDir "whisper\whisper_server.py"))) {
+        & (Join-Path $scriptsDir "install-whisper.ps1")
+    }
+    $pythonExe = Join-Path $aiDir "python\python.exe"
+    if (-not (Test-PortOpen -Port 9000)) {
+        Start-Process -FilePath $pythonExe -ArgumentList "`"$(Join-Path $aiDir 'whisper\whisper_server.py')`"" -WindowStyle Hidden `
+            -RedirectStandardOutput (Join-Path $logDir "whisper.log") -RedirectStandardError (Join-Path $logDir "whisper.err.log")
+    }
+
+    $ready = $false
+    for ($i = 0; $i -lt 30; $i++) {
+        if (Test-SidecarHealthy -Url "http://127.0.0.1:9000/health") { $ready = $true; break }
+        Start-Sleep -Seconds 1
+    }
+    if (-not $ready) {
+        throw "Whisper didn't become ready within 30s - check $(Join-Path $logDir 'whisper.err.log')"
     }
 }
 
