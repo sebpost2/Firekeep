@@ -365,6 +365,11 @@
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
             <TextBlock Grid.Row="0" Text="LOCAL AI (VERITY)" Foreground="{StaticResource MutedTextBrush}"
                        FontFamily="Segoe UI Semibold" FontSize="11" Margin="0,0,0,8"/>
@@ -402,7 +407,23 @@
                         Foreground="{StaticResource AccentBrush}"/>
             </Grid>
 
-            <Button Grid.Row="4" x:Name="VerityAiStopAllButton" Content="STOP ALL" Style="{StaticResource LinkButtonStyle}"
+            <TextBlock Grid.Row="4" Text="GROQ API KEY (used when not local)" Foreground="{StaticResource MutedTextBrush}"
+                       FontFamily="Segoe UI Semibold" FontSize="10" Margin="0,4,0,4"/>
+
+            <Grid Grid.Row="5" Margin="0,0,0,10">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <PasswordBox Grid.Column="0" x:Name="VerityApiKeyBox" FontFamily="Consolas" FontSize="12"
+                             Background="{StaticResource PanelElevatedBrush}" Foreground="{StaticResource TextBrush}"
+                             BorderBrush="{StaticResource BorderSubtleBrush}" BorderThickness="1" Padding="6,4"
+                             VerticalContentAlignment="Center"/>
+                <Button Grid.Column="1" x:Name="VerityApiKeySaveButton" Content="SAVE" Style="{StaticResource LinkButtonStyle}"
+                        Foreground="{StaticResource AccentBrush}" Margin="8,0,0,0"/>
+            </Grid>
+
+            <Button Grid.Row="6" x:Name="VerityAiStopAllButton" Content="STOP ALL" Style="{StaticResource LinkButtonStyle}"
                     Foreground="{StaticResource MutedTextBrush}" HorizontalAlignment="Right"/>
         </Grid>
     </Border>
