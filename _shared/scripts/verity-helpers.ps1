@@ -58,12 +58,15 @@ function Set-TomlSectionValue {
     return $result
 }
 
-# Points a Verity-enabled server's config/verity-common.toml at the local
-# AI sidecars (Ollama/Kokoro/Whisper) instead of a cloud provider. Run once
-# when Local AI is enabled for that server from the GUI.
-function Set-VerityLocalAI {
+# Points one Verity subsystem (LLM/TTS/STT) at its local sidecar, or reverts
+# it to Verity's vanilla non-local default. config/verity-common.toml is the
+# single source of truth for which sidecars a server wants running - there's
+# no separate on/off state to keep in sync.
+function Set-VerityAiProvider {
     param(
-        [Parameter(Mandatory = $true)][string]$InstancePath
+        [Parameter(Mandatory = $true)][string]$InstancePath,
+        [Parameter(Mandatory = $true)][ValidateSet("Ollama", "Kokoro", "Whisper")][string]$Service,
+        [Parameter(Mandatory = $true)][bool]$UseLocal
     )
 
     $tomlPath = Join-Path $InstancePath "config\verity-common.toml"
@@ -73,19 +76,42 @@ function Set-VerityLocalAI {
 
     $lines = Get-Content -Path $tomlPath -Encoding utf8
 
-    $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.AISettings" -Key "aiProvider" -Value "OLLAMA"
-    $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.AISettings" -Key "aiEndpoint" -Value "http://127.0.0.1:11434/v1"
-    $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.AISettings" -Key "aiModel" -Value "timheinrich2011/verity-3b"
+    switch ($Service) {
+        "Ollama" {
+            if ($UseLocal) {
+                $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.AISettings" -Key "aiProvider" -Value "OLLAMA"
+                $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.AISettings" -Key "aiEndpoint" -Value "http://127.0.0.1:11434/v1"
+                $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.AISettings" -Key "aiModel" -Value "timheinrich2011/verity-3b"
+            } else {
+                $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.AISettings" -Key "aiProvider" -Value "OPENAI"
+            }
+        }
+        "Kokoro" {
+            if ($UseLocal) {
+                $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.VoiceSettings" -Key "ttsProvider" -Value "KOKORO"
+                $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.VoiceSettings" -Key "ttsEndpoint" -Value "http://127.0.0.1:8880/v1"
+                $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.VoiceSettings" -Key "kokoroModel" -Value "kokoro"
+            } else {
+                $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.VoiceSettings" -Key "ttsProvider" -Value "NATIVE"
+            }
+        }
+        "Whisper" {
+            if ($UseLocal) {
+                $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.SpeechSettings" -Key "sttProvider" -Value "WHISPER"
+                $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.SpeechSettings" -Key "sttEndpoint" -Value "http://127.0.0.1:9000/v1"
+                $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.SpeechSettings" -Key "sttModel" -Value "base.en"
+            } else {
+                $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.SpeechSettings" -Key "sttProvider" -Value "NATIVE"
+            }
+        }
+    }
 
-    $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.VoiceSettings" -Key "ttsProvider" -Value "KOKORO"
-    $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.VoiceSettings" -Key "ttsEndpoint" -Value "http://127.0.0.1:8880/v1"
-    $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.VoiceSettings" -Key "kokoroModel" -Value "kokoro"
-
-    $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.SpeechSettings" -Key "sttProvider" -Value "WHISPER"
-    $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.SpeechSettings" -Key "sttEndpoint" -Value "http://127.0.0.1:9000/v1"
-    $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.SpeechSettings" -Key "sttModel" -Value "base.en"
-
-    Set-Content -Path $tomlPath -Value $lines -Encoding utf8
+    # Windows PowerShell 5.1's -Encoding utf8 always prepends a BOM, which
+    # Forge's TOML parser (NightConfig) doesn't strip - it reads the BOM
+    # bytes as the start of a bare key and refuses to load the file at all,
+    # crashing every server boot. Write UTF-8 without a BOM instead.
+    $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+    [System.IO.File]::WriteAllLines($tomlPath, $lines, $utf8NoBom)
 }
 
 # A quick, non-throwing health check for a sidecar's HTTP endpoint.

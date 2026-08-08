@@ -61,9 +61,9 @@ Describe "Set-TomlSectionValue" {
     }
 }
 
-Describe "Set-VerityLocalAI" {
+Describe "Set-VerityAiProvider" {
 
-    $root = Join-Path $env:TEMP ("verity-config-" + [Guid]::NewGuid().ToString("N"))
+    $root = Join-Path $env:TEMP ("verity-provider-" + [Guid]::NewGuid().ToString("N"))
 
     function New-FakeVerityInstance([string]$Path) {
         New-Item -ItemType Directory -Force -Path (Join-Path $Path "config") | Out-Null
@@ -91,38 +91,65 @@ Describe "Set-VerityLocalAI" {
 '@ | Set-Content -Path (Join-Path $Path "config\verity-common.toml") -Encoding utf8
     }
 
-    It "points AISettings at the local Ollama sidecar" {
-        $inst = Join-Path $root "server1"
+    It "points AISettings at the local Ollama sidecar when UseLocal is true" {
+        $inst = Join-Path $root "ollama-on"
         New-FakeVerityInstance -Path $inst
-        Set-VerityLocalAI -InstancePath $inst
+        Set-VerityAiProvider -InstancePath $inst -Service "Ollama" -UseLocal $true
         $content = Get-Content (Join-Path $inst "config\verity-common.toml") -Raw
         $content | Should Match 'aiProvider = "OLLAMA"'
         $content | Should Match 'aiEndpoint = "http://127\.0\.0\.1:11434/v1"'
         $content | Should Match 'aiModel = "timheinrich2011/verity-3b"'
     }
 
-    It "points VoiceSettings at the local Kokoro sidecar" {
-        $inst = Join-Path $root "server2"
+    It "reverts aiProvider to OPENAI when UseLocal is false" {
+        $inst = Join-Path $root "ollama-off"
         New-FakeVerityInstance -Path $inst
-        Set-VerityLocalAI -InstancePath $inst
+        Set-VerityAiProvider -InstancePath $inst -Service "Ollama" -UseLocal $true
+        Set-VerityAiProvider -InstancePath $inst -Service "Ollama" -UseLocal $false
+        $content = Get-Content (Join-Path $inst "config\verity-common.toml") -Raw
+        $content | Should Match 'aiProvider = "OPENAI"'
+    }
+
+    It "points VoiceSettings at the local Kokoro sidecar when UseLocal is true" {
+        $inst = Join-Path $root "kokoro-on"
+        New-FakeVerityInstance -Path $inst
+        Set-VerityAiProvider -InstancePath $inst -Service "Kokoro" -UseLocal $true
         $content = Get-Content (Join-Path $inst "config\verity-common.toml") -Raw
         $content | Should Match 'ttsProvider = "KOKORO"'
         $content | Should Match 'ttsEndpoint = "http://127\.0\.0\.1:8880/v1"'
     }
 
-    It "points SpeechSettings at the local Whisper sidecar" {
-        $inst = Join-Path $root "server3"
+    It "reverts ttsProvider to NATIVE when UseLocal is false" {
+        $inst = Join-Path $root "kokoro-off"
         New-FakeVerityInstance -Path $inst
-        Set-VerityLocalAI -InstancePath $inst
+        Set-VerityAiProvider -InstancePath $inst -Service "Kokoro" -UseLocal $true
+        Set-VerityAiProvider -InstancePath $inst -Service "Kokoro" -UseLocal $false
+        $content = Get-Content (Join-Path $inst "config\verity-common.toml") -Raw
+        $content | Should Match 'ttsProvider = "NATIVE"'
+    }
+
+    It "points SpeechSettings at the local Whisper sidecar when UseLocal is true" {
+        $inst = Join-Path $root "whisper-on"
+        New-FakeVerityInstance -Path $inst
+        Set-VerityAiProvider -InstancePath $inst -Service "Whisper" -UseLocal $true
         $content = Get-Content (Join-Path $inst "config\verity-common.toml") -Raw
         $content | Should Match 'sttProvider = "WHISPER"'
         $content | Should Match 'sttEndpoint = "http://127\.0\.0\.1:9000/v1"'
     }
 
+    It "reverts sttProvider to NATIVE when UseLocal is false" {
+        $inst = Join-Path $root "whisper-off"
+        New-FakeVerityInstance -Path $inst
+        Set-VerityAiProvider -InstancePath $inst -Service "Whisper" -UseLocal $true
+        Set-VerityAiProvider -InstancePath $inst -Service "Whisper" -UseLocal $false
+        $content = Get-Content (Join-Path $inst "config\verity-common.toml") -Raw
+        $content | Should Match 'sttProvider = "NATIVE"'
+    }
+
     It "throws a clear error when verity-common.toml doesn't exist" {
         $inst = Join-Path $root "no-config"
         New-Item -ItemType Directory -Force -Path $inst | Out-Null
-        { Set-VerityLocalAI -InstancePath $inst } | Should Throw
+        { Set-VerityAiProvider -InstancePath $inst -Service "Ollama" -UseLocal $true } | Should Throw
     }
 
     Remove-Item -Recurse -Force $root -ErrorAction SilentlyContinue
