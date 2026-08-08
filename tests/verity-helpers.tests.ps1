@@ -60,3 +60,70 @@ Describe "Set-TomlSectionValue" {
         $result[0] | Should Be '[GeneralSettings.AISettings]'
     }
 }
+
+Describe "Set-VerityLocalAI" {
+
+    $root = Join-Path $env:TEMP ("verity-config-" + [Guid]::NewGuid().ToString("N"))
+
+    function New-FakeVerityInstance([string]$Path) {
+        New-Item -ItemType Directory -Force -Path (Join-Path $Path "config") | Out-Null
+        @'
+[GeneralSettings.AISettings]
+	apiKey = ""
+	aiEndpoint = ""
+	aiModel = ""
+	aiProvider = "OPENAI"
+	aiThink = true
+
+[GeneralSettings.VoiceSettings]
+	useTTS = true
+	ttsProvider = "NATIVE"
+	ttsEndpoint = ""
+	voice = "Daniel"
+	kokoroVoice = "am_fenrir"
+	kokoroModel = ""
+
+[GeneralSettings.SpeechSettings]
+	sttProvider = "NATIVE"
+	groqKey = ""
+	sttEndpoint = ""
+	sttModel = ""
+'@ | Set-Content -Path (Join-Path $Path "config\verity-common.toml") -Encoding utf8
+    }
+
+    It "points AISettings at the local Ollama sidecar" {
+        $inst = Join-Path $root "server1"
+        New-FakeVerityInstance -Path $inst
+        Set-VerityLocalAI -InstancePath $inst
+        $content = Get-Content (Join-Path $inst "config\verity-common.toml") -Raw
+        $content | Should Match 'aiProvider = "OLLAMA"'
+        $content | Should Match 'aiEndpoint = "http://127\.0\.0\.1:11434/v1"'
+        $content | Should Match 'aiModel = "timheinrich2011/verity-3b"'
+    }
+
+    It "points VoiceSettings at the local Kokoro sidecar" {
+        $inst = Join-Path $root "server2"
+        New-FakeVerityInstance -Path $inst
+        Set-VerityLocalAI -InstancePath $inst
+        $content = Get-Content (Join-Path $inst "config\verity-common.toml") -Raw
+        $content | Should Match 'ttsProvider = "KOKORO"'
+        $content | Should Match 'ttsEndpoint = "http://127\.0\.0\.1:8880/v1"'
+    }
+
+    It "points SpeechSettings at the local Whisper sidecar" {
+        $inst = Join-Path $root "server3"
+        New-FakeVerityInstance -Path $inst
+        Set-VerityLocalAI -InstancePath $inst
+        $content = Get-Content (Join-Path $inst "config\verity-common.toml") -Raw
+        $content | Should Match 'sttProvider = "WHISPER"'
+        $content | Should Match 'sttEndpoint = "http://127\.0\.0\.1:9000/v1"'
+    }
+
+    It "throws a clear error when verity-common.toml doesn't exist" {
+        $inst = Join-Path $root "no-config"
+        New-Item -ItemType Directory -Force -Path $inst | Out-Null
+        { Set-VerityLocalAI -InstancePath $inst } | Should Throw
+    }
+
+    Remove-Item -Recurse -Force $root -ErrorAction SilentlyContinue
+}

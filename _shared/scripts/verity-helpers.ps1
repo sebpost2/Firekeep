@@ -54,3 +54,33 @@ function Set-TomlSectionValue {
     }
     return $result
 }
+
+# Points a Verity-enabled server's config/verity-common.toml at the local
+# AI sidecars (Ollama/Kokoro/Whisper) instead of a cloud provider. Run once
+# when Local AI is enabled for that server from the GUI.
+function Set-VerityLocalAI {
+    param(
+        [Parameter(Mandatory = $true)][string]$InstancePath
+    )
+
+    $tomlPath = Join-Path $InstancePath "config\verity-common.toml"
+    if (-not (Test-Path $tomlPath)) {
+        throw "Could not find config\verity-common.toml under $InstancePath - is Verity actually installed on this server?"
+    }
+
+    $lines = Get-Content -Path $tomlPath -Encoding utf8
+
+    $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.AISettings" -Key "aiProvider" -Value "OLLAMA"
+    $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.AISettings" -Key "aiEndpoint" -Value "http://127.0.0.1:11434/v1"
+    $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.AISettings" -Key "aiModel" -Value "timheinrich2011/verity-3b"
+
+    $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.VoiceSettings" -Key "ttsProvider" -Value "KOKORO"
+    $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.VoiceSettings" -Key "ttsEndpoint" -Value "http://127.0.0.1:8880/v1"
+    $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.VoiceSettings" -Key "kokoroModel" -Value "kokoro"
+
+    $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.SpeechSettings" -Key "sttProvider" -Value "WHISPER"
+    $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.SpeechSettings" -Key "sttEndpoint" -Value "http://127.0.0.1:9000/v1"
+    $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.SpeechSettings" -Key "sttModel" -Value "base.en"
+
+    Set-Content -Path $tomlPath -Value $lines -Encoding utf8
+}
