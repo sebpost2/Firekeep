@@ -5,6 +5,20 @@ $serverName = Split-Path $PSScriptRoot -Leaf
 $mcRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $gsRoot = Split-Path -Parent $mcRoot
 
+# Refuse a second concurrent launch against the same world - two java
+# processes both opening the world's session.lock crash-loop forever, each
+# failing on the other's lock. This survives a GUI restart (which loses its
+# in-memory launch-tracking) because the guard is file-based, not in-memory.
+$startLock = Join-Path $PSScriptRoot ".starting.lock"
+if (Test-Path $startLock) {
+    $lockPid = (Get-Content $startLock -Raw -ErrorAction SilentlyContinue)
+    if ($lockPid -and (Get-Process -Id ([int]$lockPid.Trim()) -ErrorAction SilentlyContinue)) {
+        Write-Error "$serverName is already starting or running (PID $($lockPid.Trim())) - refusing to launch a second copy against the same world."
+        exit 1
+    }
+}
+Set-Content -Path $startLock -Value $PID -NoNewline
+
 . (Join-Path $gsRoot "_shared\scripts\verity-helpers.ps1")
 if (Test-VerityModPresent -InstancePath $PSScriptRoot) {
     $requiredSidecars = Get-VerityRequiredSidecars -InstancePath $PSScriptRoot
@@ -27,6 +41,7 @@ $addrFile = Join-Path $toolDir "address.txt"
 
 if (-not (Test-Path $playitExe)) {
     Write-Error "Could not find playit.exe at $playitExe"
+    Remove-Item -Path $startLock -Force -ErrorAction SilentlyContinue
     exit 1
 }
 
@@ -117,4 +132,6 @@ finally {
             Stop-VerityLocalAiStack
         }
     }
+
+    Remove-Item -Path $startLock -Force -ErrorAction SilentlyContinue
 }
