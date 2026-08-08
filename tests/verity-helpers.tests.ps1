@@ -233,6 +233,77 @@ Describe "Get-VerityRequiredSidecars" {
     Remove-Item -Recurse -Force $root -ErrorAction SilentlyContinue
 }
 
+Describe "Get-VerityApiKey" {
+
+    $root = Join-Path $env:TEMP ("verity-getkey-" + [Guid]::NewGuid().ToString("N"))
+
+    It "returns the saved key" {
+        $inst = Join-Path $root "with-key"
+        New-Item -ItemType Directory -Force -Path (Join-Path $inst "config") | Out-Null
+        @'
+[AISettings]
+	apiKey = "gsk_abc123"
+'@ | Set-Content -Path (Join-Path $inst "config\verity-common.toml") -Encoding utf8
+
+        Get-VerityApiKey -InstancePath $inst | Should Be "gsk_abc123"
+    }
+
+    It "returns an empty string when the key is blank" {
+        $inst = Join-Path $root "blank-key"
+        New-Item -ItemType Directory -Force -Path (Join-Path $inst "config") | Out-Null
+        @'
+[AISettings]
+	apiKey = ""
+'@ | Set-Content -Path (Join-Path $inst "config\verity-common.toml") -Encoding utf8
+
+        Get-VerityApiKey -InstancePath $inst | Should Be ""
+    }
+
+    It "returns an empty string when the config file doesn't exist" {
+        $inst = Join-Path $root "no-config"
+        New-Item -ItemType Directory -Force -Path $inst | Out-Null
+        Get-VerityApiKey -InstancePath $inst | Should Be ""
+    }
+
+    Remove-Item -Recurse -Force $root -ErrorAction SilentlyContinue
+}
+
+Describe "Set-VerityApiKey" {
+
+    $root = Join-Path $env:TEMP ("verity-setkey-" + [Guid]::NewGuid().ToString("N"))
+
+    function New-FakeVerityInstance([string]$Path) {
+        New-Item -ItemType Directory -Force -Path (Join-Path $Path "config") | Out-Null
+        @'
+[AISettings]
+	apiKey = ""
+'@ | Set-Content -Path (Join-Path $Path "config\verity-common.toml") -Encoding utf8
+    }
+
+    It "writes the given key" {
+        $inst = Join-Path $root "set-key"
+        New-FakeVerityInstance -Path $inst
+        Set-VerityApiKey -InstancePath $inst -ApiKey "gsk_abc123"
+        (Get-Content (Join-Path $inst "config\verity-common.toml") -Raw) | Should Match 'apiKey = "gsk_abc123"'
+    }
+
+    It "can clear the key back to empty" {
+        $inst = Join-Path $root "clear-key"
+        New-FakeVerityInstance -Path $inst
+        Set-VerityApiKey -InstancePath $inst -ApiKey "gsk_abc123"
+        Set-VerityApiKey -InstancePath $inst -ApiKey ""
+        (Get-Content (Join-Path $inst "config\verity-common.toml") -Raw) | Should Match 'apiKey = ""'
+    }
+
+    It "throws a clear error when verity-common.toml doesn't exist" {
+        $inst = Join-Path $root "no-config"
+        New-Item -ItemType Directory -Force -Path $inst | Out-Null
+        { Set-VerityApiKey -InstancePath $inst -ApiKey "x" } | Should Throw
+    }
+
+    Remove-Item -Recurse -Force $root -ErrorAction SilentlyContinue
+}
+
 Describe "Get-AllServerInstancePaths" {
 
     $root = Join-Path $env:TEMP ("verity-instances-" + [Guid]::NewGuid().ToString("N"))

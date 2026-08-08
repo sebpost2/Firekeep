@@ -163,6 +163,42 @@ function Get-VerityRequiredSidecars {
     return $required
 }
 
+# Reads the currently saved Groq API key (or "" if unset/missing config) -
+# used to pre-fill the GUI's API key field so it reflects what's actually
+# saved instead of always starting blank.
+function Get-VerityApiKey {
+    param(
+        [Parameter(Mandatory = $true)][string]$InstancePath
+    )
+    $tomlPath = Join-Path $InstancePath "config\verity-common.toml"
+    if (-not (Test-Path $tomlPath)) { return "" }
+
+    $content = Get-Content -Path $tomlPath -Raw
+    if ($content -match '(?m)^\s*apiKey\s*=\s*"([^"]*)"') { return $Matches[1] }
+    return ""
+}
+
+# Persists the Groq API key entered in the GUI. Independent of
+# Set-VerityAiProvider - apiKey is used for the cloud-fallback path and
+# isn't touched by the Ollama/Kokoro/Whisper local-AI toggles.
+function Set-VerityApiKey {
+    param(
+        [Parameter(Mandatory = $true)][string]$InstancePath,
+        [Parameter(Mandatory = $true)][AllowEmptyString()][string]$ApiKey
+    )
+
+    $tomlPath = Join-Path $InstancePath "config\verity-common.toml"
+    if (-not (Test-Path $tomlPath)) {
+        throw "Could not find config\verity-common.toml under $InstancePath - is Verity actually installed on this server?"
+    }
+
+    $lines = Get-Content -Path $tomlPath -Encoding utf8
+    $lines = Set-TomlSectionValue -Lines $lines -Section "AISettings" -Key "apiKey" -Value $ApiKey
+
+    $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+    [System.IO.File]::WriteAllLines($tomlPath, $lines, $utf8NoBom)
+}
+
 # A quick, non-throwing health check for a sidecar's HTTP endpoint.
 function Test-SidecarHealthy {
     param(
