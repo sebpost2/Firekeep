@@ -127,3 +127,30 @@ Describe "Set-VerityLocalAI" {
 
     Remove-Item -Recurse -Force $root -ErrorAction SilentlyContinue
 }
+
+Describe "Test-SidecarHealthy" {
+
+    It "returns false when nothing is listening" {
+        Test-SidecarHealthy -Url "http://127.0.0.1:39281/health" -TimeoutMs 300 | Should Be $false
+    }
+
+    It "returns true when the endpoint responds with 2xx" {
+        $listener = New-Object System.Net.HttpListener
+        $listener.Prefixes.Add("http://127.0.0.1:39282/")
+        $listener.Start()
+        try {
+            $job = Start-Job -ScriptBlock {
+                param($listener)
+                $ctx = $listener.GetContext()
+                $ctx.Response.StatusCode = 200
+                $ctx.Response.Close()
+            } -ArgumentList $listener
+
+            Test-SidecarHealthy -Url "http://127.0.0.1:39282/health" -TimeoutMs 3000 | Should Be $true
+            Wait-Job $job -Timeout 5 | Out-Null
+            Remove-Job $job -Force
+        } finally {
+            $listener.Stop()
+        }
+    }
+}

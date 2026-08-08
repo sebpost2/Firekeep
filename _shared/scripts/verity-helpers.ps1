@@ -84,3 +84,17 @@ function Set-VerityLocalAI {
 
     Set-Content -Path $tomlPath -Value $lines -Encoding utf8
 }
+
+# A quick, non-throwing health check for a sidecar's HTTP endpoint.
+function Test-SidecarHealthy {
+    param(
+        [Parameter(Mandatory = $true)][string]$Url,
+        [int]$TimeoutMs = 1500
+    )
+    try {
+        $resp = Invoke-WebRequest -Uri $Url -TimeoutSec ([Math]::Max(1, [Math]::Ceiling($TimeoutMs / 1000))) -UseBasicParsing
+        return ($resp.StatusCode -ge 200 -and $resp.StatusCode -lt 300)
+    } catch {
+        return $false
+    }
+}
