@@ -155,6 +155,51 @@ Describe "Set-VerityAiProvider" {
     Remove-Item -Recurse -Force $root -ErrorAction SilentlyContinue
 }
 
+Describe "Get-VerityRequiredSidecars" {
+
+    $root = Join-Path $env:TEMP ("verity-required-" + [Guid]::NewGuid().ToString("N"))
+
+    function New-FakeVerityToml([string]$Path, [string]$AiProvider, [string]$TtsProvider, [string]$SttProvider) {
+        New-Item -ItemType Directory -Force -Path (Join-Path $Path "config") | Out-Null
+        @"
+[GeneralSettings.AISettings]
+	aiProvider = "$AiProvider"
+
+[GeneralSettings.VoiceSettings]
+	ttsProvider = "$TtsProvider"
+
+[GeneralSettings.SpeechSettings]
+	sttProvider = "$SttProvider"
+"@ | Set-Content -Path (Join-Path $Path "config\verity-common.toml") -Encoding utf8
+    }
+
+    It "returns all three when all providers are local" {
+        $inst = Join-Path $root "all-local"
+        New-FakeVerityToml -Path $inst -AiProvider "OLLAMA" -TtsProvider "KOKORO" -SttProvider "WHISPER"
+        (Get-VerityRequiredSidecars -InstancePath $inst) | Should Be @("Ollama", "Kokoro", "Whisper")
+    }
+
+    It "returns only the ones set local, e.g. just the core LLM" {
+        $inst = Join-Path $root "llm-only"
+        New-FakeVerityToml -Path $inst -AiProvider "OLLAMA" -TtsProvider "NATIVE" -SttProvider "NATIVE"
+        (Get-VerityRequiredSidecars -InstancePath $inst) | Should Be @("Ollama")
+    }
+
+    It "returns an empty array when nothing is local" {
+        $inst = Join-Path $root "cloud-only"
+        New-FakeVerityToml -Path $inst -AiProvider "OPENAI" -TtsProvider "NATIVE" -SttProvider "NATIVE"
+        (Get-VerityRequiredSidecars -InstancePath $inst).Count | Should Be 0
+    }
+
+    It "returns an empty array when the config file doesn't exist" {
+        $inst = Join-Path $root "no-config"
+        New-Item -ItemType Directory -Force -Path $inst | Out-Null
+        (Get-VerityRequiredSidecars -InstancePath $inst).Count | Should Be 0
+    }
+
+    Remove-Item -Recurse -Force $root -ErrorAction SilentlyContinue
+}
+
 Describe "Test-SidecarHealthy" {
 
     It "returns false when nothing is listening" {

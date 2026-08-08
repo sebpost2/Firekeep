@@ -114,6 +114,24 @@ function Set-VerityAiProvider {
     [System.IO.File]::WriteAllLines($tomlPath, $lines, $utf8NoBom)
 }
 
+# Reads which of the 3 sidecars this server's config currently points at
+# locally - the toml IS the persisted on/off state, so this is the only
+# place that needs to know how to read it back out.
+function Get-VerityRequiredSidecars {
+    param(
+        [Parameter(Mandatory = $true)][string]$InstancePath
+    )
+    $tomlPath = Join-Path $InstancePath "config\verity-common.toml"
+    if (-not (Test-Path $tomlPath)) { return @() }
+
+    $content = Get-Content -Path $tomlPath -Raw
+    $required = @()
+    if ($content -match '(?m)^\s*aiProvider\s*=\s*"OLLAMA"') { $required += "Ollama" }
+    if ($content -match '(?m)^\s*ttsProvider\s*=\s*"KOKORO"') { $required += "Kokoro" }
+    if ($content -match '(?m)^\s*sttProvider\s*=\s*"WHISPER"') { $required += "Whisper" }
+    return $required
+}
+
 # A quick, non-throwing health check for a sidecar's HTTP endpoint.
 function Test-SidecarHealthy {
     param(
