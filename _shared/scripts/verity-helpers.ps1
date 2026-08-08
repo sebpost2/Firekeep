@@ -13,3 +13,38 @@ function Test-VerityModPresent {
     $jar = Get-ChildItem -Path $modsDir -Filter "verity-*.jar" -ErrorAction SilentlyContinue | Select-Object -First 1
     return [bool]$jar
 }
+
+# Replaces `Key = "..."` with a new value, but only for lines that fall
+# under the given `[Section]` header - so e.g. AISettings.aiProvider and a
+# hypothetical same-named key elsewhere never collide. Preserves the
+# original line's leading whitespace (verity-common.toml indents nested
+# keys with a tab). Section headers are matched by exact text inside the
+# brackets (e.g. "GeneralSettings.AISettings" for "[GeneralSettings.AISettings]").
+function Set-TomlSectionValue {
+    param(
+        [Parameter(Mandatory = $true)]$Lines,
+        [Parameter(Mandatory = $true)][string]$Section,
+        [Parameter(Mandatory = $true)][string]$Key,
+        [Parameter(Mandatory = $true)][string]$Value
+    )
+
+    $result = @()
+    $inSection = $false
+    $sectionHeader = "[$Section]"
+
+    foreach ($line in $Lines) {
+        $trimmed = $line.Trim()
+        if ($trimmed -match '^\[.+\]$') {
+            $inSection = ($trimmed -eq $sectionHeader)
+            $result += $line
+            continue
+        }
+        if ($inSection -and $trimmed -match "^$([regex]::Escape($Key))\s*=") {
+            $leading = $line.Substring(0, $line.Length - $line.TrimStart().Length)
+            $result += "$leading$Key = `"$Value`""
+            continue
+        }
+        $result += $line
+    }
+    return $result
+}

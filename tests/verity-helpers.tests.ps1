@@ -31,3 +31,32 @@ Describe "Test-VerityModPresent" {
 
     Remove-Item -Recurse -Force $root -ErrorAction SilentlyContinue
 }
+
+Describe "Set-TomlSectionValue" {
+
+    $sampleToml = @(
+        '[GeneralSettings.AISettings]',
+        "`taiKey = `"`"",
+        "`taiEndpoint = `"`"",
+        "`taiProvider = `"OPENAI`"",
+        '',
+        '[GeneralSettings.VoiceSettings]',
+        "`tttsProvider = `"NATIVE`""
+    )
+
+    It "replaces a key's value only within the matching section" {
+        $result = Set-TomlSectionValue -Lines $sampleToml -Section "GeneralSettings.AISettings" -Key "aiProvider" -Value "OLLAMA"
+        ($result | Where-Object { $_ -match '^\s*aiProvider\s*=' }) | Should Be "`taiProvider = `"OLLAMA`""
+    }
+
+    It "leaves a same-named key in a different section untouched" {
+        $result = Set-TomlSectionValue -Lines $sampleToml -Section "GeneralSettings.AISettings" -Key "ttsProvider" -Value "KOKORO"
+        ($result | Where-Object { $_ -match '^\s*ttsProvider\s*=' }) | Should Be "`tttsProvider = `"NATIVE`""
+    }
+
+    It "preserves every other line unchanged" {
+        $result = Set-TomlSectionValue -Lines $sampleToml -Section "GeneralSettings.AISettings" -Key "aiProvider" -Value "OLLAMA"
+        $result.Count | Should Be $sampleToml.Count
+        $result[0] | Should Be '[GeneralSettings.AISettings]'
+    }
+}
