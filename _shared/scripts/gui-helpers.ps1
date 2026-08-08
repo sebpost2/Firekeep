@@ -156,3 +156,26 @@ function Stop-ProcessTree {
     }
     Stop-Process -Id $ProcessId -Force -ErrorAction SilentlyContinue
 }
+
+# Compact status line for the Home screen's "Local AI" panel.
+function Get-VerityAiStatusText {
+    param(
+        [Parameter(Mandatory = $true)][bool]$OllamaRunning,
+        [Parameter(Mandatory = $true)][bool]$KokoroRunning,
+        [Parameter(Mandatory = $true)][bool]$WhisperRunning
+    )
+    $label = { param($running) if ($running) { "LIT" } else { "OUT" } }
+    return "Ollama: $(& $label $OllamaRunning)  |  Kokoro: $(& $label $KokoroRunning)  |  Whisper: $(& $label $WhisperRunning)"
+}
+
+# Label for the Local AI start/stop button. Simpler than
+# Get-ActionButtonView's state machine - starting is a single bounded,
+# synchronous-from-the-user's-view action (tracked via a background job,
+# see Start-Gui.ps1), not an interruptible one like the server boot is.
+function Get-VerityAiButtonLabel {
+    param(
+        [Parameter(Mandatory = $true)][bool]$AllRunning
+    )
+    if ($AllRunning) { return "STOP LOCAL AI" }
+    return "START LOCAL AI"
+}
