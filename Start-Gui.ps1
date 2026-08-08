@@ -15,6 +15,7 @@ $root = $PSScriptRoot
 . (Join-Path $root "_shared\scripts\tunnel-helpers.ps1")
 . (Join-Path $root "_shared\scripts\worlds-helpers.ps1")
 . (Join-Path $root "_shared\scripts\gui-dialogs.ps1")
+. (Join-Path $root "_shared\scripts\verity-helpers.ps1")
 
 Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase
 
@@ -79,6 +80,10 @@ $mapsButton       = $homeRoot.FindName("MapsButton")
 $consoleButton    = $homeRoot.FindName("ConsoleButton")
 $newServerButton  = $homeRoot.FindName("NewServerButton")
 $setupTunnelButton = $homeRoot.FindName("SetupTunnelButton")
+$verityAiPanel      = $homeRoot.FindName("VerityAiPanel")
+$verityAiStatusText = $homeRoot.FindName("VerityAiStatusText")
+$verityAiButton     = $homeRoot.FindName("VerityAiButton")
+$script:aiJob       = $null
 
 $script:selected        = $null
 $script:pendingStart    = $false
@@ -188,6 +193,20 @@ function Sync-StatusDisplay {
         if ($state -eq "Running" -or $state -eq "Stopped") { $homeHintText.Text = " " }
     }
 
+    if ($script:selected -and $script:selected.Game -eq "Minecraft" -and (Test-VerityModPresent -InstancePath $script:selected.Path)) {
+        $verityAiPanel.Visibility = "Visible"
+        if (-not $script:aiJob) {
+            $ollamaUp = Test-PortOpen -Port 11434
+            $kokoroUp = Test-PortOpen -Port 8880
+            $whisperUp = Test-PortOpen -Port 9000
+            $verityAiStatusText.Text = Get-VerityAiStatusText -OllamaRunning $ollamaUp -KokoroRunning $kokoroUp -WhisperRunning $whisperUp
+            $verityAiButton.Content = Get-VerityAiButtonLabel -AllRunning ($ollamaUp -and $kokoroUp -and $whisperUp)
+            $verityAiButton.IsEnabled = $true
+        }
+    } else {
+        $verityAiPanel.Visibility = "Collapsed"
+    }
+
     return $state
 }
 
@@ -238,6 +257,30 @@ $actionButton.Add_Click({
             "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
             "`"$(Join-Path $script:selected.Path 'start-with-tunnel.ps1')`""
         )
+    }
+})
+
+$verityAiButton.Add_Click({
+    if (-not $script:selected -or $script:aiJob) { return }
+
+    $allRunning = (Test-PortOpen -Port 11434) -and (Test-PortOpen -Port 8880) -and (Test-PortOpen -Port 9000)
+    $verityAiButton.IsEnabled = $false
+
+    if ($allRunning) {
+        $verityAiStatusText.Text = "Stopping..."
+        $script:aiJob = Start-Job -ScriptBlock {
+            param($GsRoot)
+            . (Join-Path $GsRoot "_shared\scripts\verity-helpers.ps1")
+            Stop-VerityLocalAiStack
+        } -ArgumentList $root
+    } else {
+        $verityAiStatusText.Text = "Starting local AI (first run can take a few minutes to install)..."
+        $script:aiJob = Start-Job -ScriptBlock {
+            param($GsRoot, $InstancePath, $McRoot)
+            . (Join-Path $GsRoot "_shared\scripts\verity-helpers.ps1")
+            Set-VerityLocalAI -InstancePath $InstancePath
+            Start-VerityLocalAiStack -McRoot $McRoot
+        } -ArgumentList $root, $script:selected.Path, (Join-Path $root "Minecraft")
     }
 })
 
@@ -656,6 +699,21 @@ $addJobTimer.Add_Tick({
 })
 $addJobTimer.Start()
 
+$aiJobTimer = New-Object System.Windows.Threading.DispatcherTimer
+$aiJobTimer.Interval = [TimeSpan]::FromMilliseconds(500)
+$aiJobTimer.Add_Tick({
+    if (-not $script:aiJob -or $script:aiJob.State -eq "Running" -or $script:aiJob.State -eq "NotStarted") { return }
+
+    if ($script:aiJob.State -eq "Failed") {
+        $reason = $script:aiJob.ChildJobs[0].JobStateInfo.Reason.Message
+        $verityAiStatusText.Text = "Error: $reason"
+    }
+    Remove-Job $script:aiJob -Force
+    $script:aiJob = $null
+    Sync-StatusDisplay | Out-Null
+})
+$aiJobTimer.Start()
+
 $newServerButton.Add_Click({
     Enter-AddServerScreen
     Show-Screen "AddServer"
@@ -873,3 +931,4 @@ $timer.Stop()
 $addJobTimer.Stop()
 $logTailTimer.Stop()
 $rconJobTimer.Stop()
+$aiJobTimer.Stop()
