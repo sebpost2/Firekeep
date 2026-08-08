@@ -270,6 +270,12 @@ function Invoke-VerityServiceToggle {
     if (-not $script:selected -or $script:aiJobs[$svc.Key]) { return }
 
     $running = Test-PortOpen -Port $svc.Port
+    if ($running -and (Test-OtherVerityServerRunning -GsRoot $root -ExcludePath $script:selected.Path)) {
+        $svc.StatusText.Text = "$($svc.Label): In use by another server, not stopping"
+        $svc.Button.IsEnabled = $true
+        return
+    }
+
     $svc.Button.IsEnabled = $false
     $svc.StatusText.Text = "$($svc.Label): $(if ($running) { 'Stopping...' } else { 'Starting...' })"
     $script:aiJobs[$svc.Key] = Start-Job -ScriptBlock {
@@ -721,6 +727,7 @@ $addJobTimer.Start()
 $aiJobTimer = New-Object System.Windows.Threading.DispatcherTimer
 $aiJobTimer.Interval = [TimeSpan]::FromMilliseconds(500)
 $aiJobTimer.Add_Tick({
+    $settled = @()
     foreach ($svc in $verityServices) {
         $job = $script:aiJobs[$svc.Key]
         if (-not $job) { continue }
@@ -730,9 +737,17 @@ $aiJobTimer.Add_Tick({
         $reason = if ($failed) { $job.ChildJobs[0].JobStateInfo.Reason.Message } else { $null }
         Remove-Job $job -Force
         $script:aiJobs[$svc.Key] = $null
-        if ($failed) { $svc.StatusText.Text = "$($svc.Label): Error - $reason" }
+        if ($failed) { $settled += [PSCustomObject]@{ Svc = $svc; Reason = $reason } }
     }
-    Sync-StatusDisplay | Out-Null
+    # Sync-StatusDisplay overwrites every row's StatusText from live port
+    # state, so it must only run (and the error text applied after it) when
+    # something actually settled this tick - otherwise it'd both clobber the
+    # error text right back to "OUT" and do a full port-check refresh 4x
+    # more often than needed for no reason.
+    if ($settled.Count -gt 0) {
+        Sync-StatusDisplay | Out-Null
+        foreach ($s in $settled) { $s.Svc.StatusText.Text = "$($s.Svc.Label): Error - $($s.Reason)" }
+    }
 })
 $aiJobTimer.Start()
 

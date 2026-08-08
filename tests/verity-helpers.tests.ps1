@@ -108,6 +108,8 @@ Describe "Set-VerityAiProvider" {
         Set-VerityAiProvider -InstancePath $inst -Service "Ollama" -UseLocal $false
         $content = Get-Content (Join-Path $inst "config\verity-common.toml") -Raw
         $content | Should Match 'aiProvider = "OPENAI"'
+        $content | Should Match 'aiEndpoint = ""'
+        $content | Should Match 'aiModel = ""'
     }
 
     It "points VoiceSettings at the local Kokoro sidecar when UseLocal is true" {
@@ -126,6 +128,8 @@ Describe "Set-VerityAiProvider" {
         Set-VerityAiProvider -InstancePath $inst -Service "Kokoro" -UseLocal $false
         $content = Get-Content (Join-Path $inst "config\verity-common.toml") -Raw
         $content | Should Match 'ttsProvider = "NATIVE"'
+        $content | Should Match 'ttsEndpoint = ""'
+        $content | Should Match 'kokoroModel = ""'
     }
 
     It "points SpeechSettings at the local Whisper sidecar when UseLocal is true" {
@@ -144,6 +148,8 @@ Describe "Set-VerityAiProvider" {
         Set-VerityAiProvider -InstancePath $inst -Service "Whisper" -UseLocal $false
         $content = Get-Content (Join-Path $inst "config\verity-common.toml") -Raw
         $content | Should Match 'sttProvider = "NATIVE"'
+        $content | Should Match 'sttEndpoint = ""'
+        $content | Should Match 'sttModel = ""'
     }
 
     It "throws a clear error when verity-common.toml doesn't exist" {
