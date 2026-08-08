@@ -88,6 +88,8 @@ $verityServices = @(
     [PSCustomObject]@{ Key = "Whisper"; Port = 9000;  Label = "Voice in (Whisper)"; StatusText = $homeRoot.FindName("VerityWhisperStatusText"); Button = $homeRoot.FindName("VerityWhisperButton") }
 )
 $verityAiStopAllButton = $homeRoot.FindName("VerityAiStopAllButton")
+$verityApiKeyBox = $homeRoot.FindName("VerityApiKeyBox")
+$verityApiKeySaveButton = $homeRoot.FindName("VerityApiKeySaveButton")
 $script:aiJobs = @{ Ollama = $null; Kokoro = $null; Whisper = $null }
 
 $script:selected        = $null
@@ -220,6 +222,9 @@ $serverCombo.Add_SelectionChanged({
     $script:selected = $script:instances[$serverCombo.SelectedIndex]
     $script:pendingStart = $false
     $script:pendingStop = $false
+    $verityApiKeyBox.Password = if ($script:selected.Game -eq "Minecraft" -and (Test-VerityModPresent -InstancePath $script:selected.Path)) {
+        Get-VerityApiKey -InstancePath $script:selected.Path
+    } else { "" }
     Sync-StatusDisplay | Out-Null
     Update-AddressDisplay
 })
@@ -303,6 +308,14 @@ $verityAiStopAllButton.Add_Click({
         }
     }
 })
+
+$verityApiKeySaveButton.Add_Click({
+    if (-not $script:selected) { return }
+    Set-VerityApiKey -InstancePath $script:selected.Path -ApiKey $verityApiKeyBox.Password
+    $verityApiKeySaveButton.Content = "SAVED"
+})
+
+$verityApiKeyBox.Add_PasswordChanged({ $verityApiKeySaveButton.Content = "SAVE" })
 
 $copyButton.Add_Click({
     if ($copyButton.IsEnabled) { Set-Clipboard -Value $addressText.Text }
