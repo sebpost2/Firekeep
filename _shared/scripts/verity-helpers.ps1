@@ -102,6 +102,26 @@ function Test-SidecarHealthy {
     }
 }
 
+# A 200 from Ollama's /v1/models isn't enough to know it's OUR Ollama - a
+# pre-existing system-wide install (or any other Ollama already holding port
+# 11434) answers the same way but won't have verity-3b loaded. This checks
+# the model list itself so Start/Stop-VerityLocalAiStack can tell "ours"
+# apart from a foreign instance instead of silently trusting the wrong one.
+function Test-OllamaModelPresent {
+    param(
+        [string]$ModelPrefix = "timheinrich2011/verity-3b"
+    )
+    try {
+        $resp = Invoke-RestMethod -Uri "http://127.0.0.1:11434/api/tags" -TimeoutSec 5
+        foreach ($m in $resp.models) {
+            if ($m.name -like "$ModelPrefix*") { return $true }
+        }
+        return $false
+    } catch {
+        return $false
+    }
+}
+
 # Installs (if needed) and starts the 3 local-AI sidecars, waiting for each
 # to answer a health check before returning. Shared host-wide - one set of
 # sidecars serves every Verity-enabled server on this machine.
@@ -126,6 +146,12 @@ function Start-VerityLocalAiStack {
     }
 
     if (-not (Test-PortOpen -Port 11434)) {
+        # Must match the OLLAMA_MODELS install-ollama.ps1 set in its own
+        # process when it pulled verity-3b - otherwise this server (which
+        # doesn't inherit that env var from the installer's process) reads
+        # the default %USERPROFILE%\.ollama\models instead, finds nothing,
+        # and serves an empty model list while still reporting healthy.
+        $env:OLLAMA_MODELS = Join-Path $aiDir "ollama\models"
         Start-Process -FilePath (Join-Path $aiDir "ollama\ollama.exe") -ArgumentList "serve" -WindowStyle Hidden `
             -RedirectStandardOutput (Join-Path $logDir "ollama.log") -RedirectStandardError (Join-Path $logDir "ollama.err.log")
     }
@@ -139,8 +165,19 @@ function Start-VerityLocalAiStack {
             -RedirectStandardOutput (Join-Path $logDir "whisper.log") -RedirectStandardError (Join-Path $logDir "whisper.err.log")
     }
 
+    # Ollama gets its own check: a 200 from /v1/models isn't enough, since a
+    # foreign Ollama already holding port 11434 (e.g. a system-wide install)
+    # answers the same way without verity-3b loaded. Confirm the model itself.
+    $ollamaReady = $false
+    for ($i = 0; $i -lt 30; $i++) {
+        if (Test-OllamaModelPresent) { $ollamaReady = $true; break }
+        Start-Sleep -Seconds 1
+    }
+    if (-not $ollamaReady) {
+        throw "Ollama is listening on port 11434 but the timheinrich2011/verity-3b model isn't loaded - looks like a different Ollama instance is already running on that port. Check $(Join-Path $logDir 'ollama.err.log'), or free port 11434 and try again."
+    }
+
     $checks = @(
-        @{ Url = "http://127.0.0.1:11434/v1/models"; Name = "Ollama"; LogFile = "ollama.err.log" },
         @{ Url = "http://127.0.0.1:8880/health"; Name = "Kokoro"; LogFile = "kokoro.err.log" },
         @{ Url = "http://127.0.0.1:9000/health"; Name = "Whisper"; LogFile = "whisper.err.log" }
     )
@@ -157,8 +194,20 @@ function Start-VerityLocalAiStack {
 }
 
 # Stops all 3 sidecars by whatever's listening on their ports.
+#
+# Ollama is only killed if verity-3b is confirmed loaded on port 11434 - this
+# function doesn't share in-memory state with the Start-Process call that may
+# (or may not) have launched it, so a plain "whatever owns the port" kill
+# would just as happily kill a pre-existing user-installed Ollama that
+# happened to already be running when the stack started. Kokoro/Whisper have
+# no such collision risk (nothing else on the system would be using those
+# ports), so they keep the simple by-port kill.
 function Stop-VerityLocalAiStack {
-    foreach ($port in @(11434, 8880, 9000)) {
+    if (Test-OllamaModelPresent) {
+        $ownerPid = Get-ListenerPid -Port 11434
+        if ($ownerPid) { Stop-ProcessTree -ProcessId $ownerPid }
+    }
+    foreach ($port in @(8880, 9000)) {
         $ownerPid = Get-ListenerPid -Port $port
         if ($ownerPid) { Stop-ProcessTree -ProcessId $ownerPid }
     }
