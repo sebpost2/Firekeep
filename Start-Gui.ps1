@@ -81,10 +81,14 @@ $mapsButton       = $homeRoot.FindName("MapsButton")
 $consoleButton    = $homeRoot.FindName("ConsoleButton")
 $newServerButton  = $homeRoot.FindName("NewServerButton")
 $setupTunnelButton = $homeRoot.FindName("SetupTunnelButton")
-$verityAiPanel      = $homeRoot.FindName("VerityAiPanel")
-$verityAiStatusText = $homeRoot.FindName("VerityAiStatusText")
-$verityAiButton     = $homeRoot.FindName("VerityAiButton")
-$script:aiJob       = $null
+$verityAiPanel = $homeRoot.FindName("VerityAiPanel")
+$verityServices = @(
+    [PSCustomObject]@{ Key = "Ollama";  Port = 11434; Label = "Core LLM (Ollama)";  StatusText = $homeRoot.FindName("VerityOllamaStatusText");  Button = $homeRoot.FindName("VerityOllamaButton") }
+    [PSCustomObject]@{ Key = "Kokoro";  Port = 8880;  Label = "Voice out (Kokoro)"; StatusText = $homeRoot.FindName("VerityKokoroStatusText");  Button = $homeRoot.FindName("VerityKokoroButton") }
+    [PSCustomObject]@{ Key = "Whisper"; Port = 9000;  Label = "Voice in (Whisper)"; StatusText = $homeRoot.FindName("VerityWhisperStatusText"); Button = $homeRoot.FindName("VerityWhisperButton") }
+)
+$verityAiStopAllButton = $homeRoot.FindName("VerityAiStopAllButton")
+$script:aiJobs = @{ Ollama = $null; Kokoro = $null; Whisper = $null }
 
 $script:selected        = $null
 $script:pendingStart    = $false
@@ -196,14 +200,14 @@ function Sync-StatusDisplay {
 
     if ($script:selected -and $script:selected.Game -eq "Minecraft" -and (Test-VerityModPresent -InstancePath $script:selected.Path)) {
         $verityAiPanel.Visibility = "Visible"
-        if (-not $script:aiJob) {
-            $ollamaUp = Test-PortOpen -Port 11434
-            $kokoroUp = Test-PortOpen -Port 8880
-            $whisperUp = Test-PortOpen -Port 9000
-            $verityAiStatusText.Text = Get-VerityAiStatusText -OllamaRunning $ollamaUp -KokoroRunning $kokoroUp -WhisperRunning $whisperUp
-            $verityAiButton.Content = Get-VerityAiButtonLabel -AllRunning ($ollamaUp -and $kokoroUp -and $whisperUp)
-            $verityAiButton.IsEnabled = $true
+        foreach ($svc in $verityServices) {
+            if ($script:aiJobs[$svc.Key]) { continue }
+            $running = Test-PortOpen -Port $svc.Port
+            $svc.StatusText.Text = "$($svc.Label): $((Get-ServerStatusView -IsRunning $running).Label)"
+            $svc.Button.Content = if ($running) { "STOP" } else { "START" }
+            $svc.Button.IsEnabled = $true
         }
+        $verityAiStopAllButton.IsEnabled = -not [bool]($script:aiJobs.Values | Where-Object { $_ })
     } else {
         $verityAiPanel.Visibility = "Collapsed"
     }
@@ -261,27 +265,36 @@ $actionButton.Add_Click({
     }
 })
 
-$verityAiButton.Add_Click({
-    if (-not $script:selected -or $script:aiJob) { return }
+function Invoke-VerityServiceToggle {
+    param($svc)
+    if (-not $script:selected -or $script:aiJobs[$svc.Key]) { return }
 
-    $allRunning = (Test-PortOpen -Port 11434) -and (Test-PortOpen -Port 8880) -and (Test-PortOpen -Port 9000)
-    $verityAiButton.IsEnabled = $false
+    $running = Test-PortOpen -Port $svc.Port
+    $svc.Button.IsEnabled = $false
+    $svc.StatusText.Text = "$($svc.Label): $(if ($running) { 'Stopping...' } else { 'Starting...' })"
+    $script:aiJobs[$svc.Key] = Start-Job -ScriptBlock {
+        param($GsRoot, $InstancePath, $McRoot, $Service, $ToLocal)
+        . (Join-Path $GsRoot "_shared\scripts\verity-helpers.ps1")
+        if ($ToLocal) {
+            & "Start-${Service}Sidecar" -McRoot $McRoot
+            Set-VerityAiProvider -InstancePath $InstancePath -Service $Service -UseLocal $true
+        } else {
+            & "Stop-${Service}Sidecar"
+            Set-VerityAiProvider -InstancePath $InstancePath -Service $Service -UseLocal $false
+        }
+    } -ArgumentList $root, $script:selected.Path, (Join-Path $root "Minecraft"), $svc.Key, (-not $running)
+}
 
-    if ($allRunning) {
-        $verityAiStatusText.Text = "Stopping..."
-        $script:aiJob = Start-Job -ScriptBlock {
-            param($GsRoot)
-            . (Join-Path $GsRoot "_shared\scripts\verity-helpers.ps1")
-            Stop-VerityLocalAiStack
-        } -ArgumentList $root
-    } else {
-        $verityAiStatusText.Text = "Starting local AI (first run can take a few minutes to install)..."
-        $script:aiJob = Start-Job -ScriptBlock {
-            param($GsRoot, $InstancePath, $McRoot)
-            . (Join-Path $GsRoot "_shared\scripts\verity-helpers.ps1")
-            Set-VerityLocalAI -InstancePath $InstancePath
-            Start-VerityLocalAiStack -McRoot $McRoot
-        } -ArgumentList $root, $script:selected.Path, (Join-Path $root "Minecraft")
+foreach ($svc in $verityServices) {
+    $svc.Button.Add_Click({ Invoke-VerityServiceToggle -svc $svc }.GetNewClosure())
+}
+
+$verityAiStopAllButton.Add_Click({
+    if (-not $script:selected) { return }
+    foreach ($svc in $verityServices) {
+        if ((Test-PortOpen -Port $svc.Port) -and -not $script:aiJobs[$svc.Key]) {
+            Invoke-VerityServiceToggle -svc $svc
+        }
     }
 })
 
@@ -708,14 +721,18 @@ $addJobTimer.Start()
 $aiJobTimer = New-Object System.Windows.Threading.DispatcherTimer
 $aiJobTimer.Interval = [TimeSpan]::FromMilliseconds(500)
 $aiJobTimer.Add_Tick({
-    if (-not $script:aiJob -or $script:aiJob.State -eq "Running" -or $script:aiJob.State -eq "NotStarted") { return }
+    foreach ($svc in $verityServices) {
+        $job = $script:aiJobs[$svc.Key]
+        if (-not $job) { continue }
+        if ($job.State -eq "Running" -or $job.State -eq "NotStarted") { continue }
 
-    $failed = $script:aiJob.State -eq "Failed"
-    $reason = if ($failed) { $script:aiJob.ChildJobs[0].JobStateInfo.Reason.Message } else { $null }
-    Remove-Job $script:aiJob -Force
-    $script:aiJob = $null
+        $failed = $job.State -eq "Failed"
+        $reason = if ($failed) { $job.ChildJobs[0].JobStateInfo.Reason.Message } else { $null }
+        Remove-Job $job -Force
+        $script:aiJobs[$svc.Key] = $null
+        if ($failed) { $svc.StatusText.Text = "$($svc.Label): Error - $reason" }
+    }
     Sync-StatusDisplay | Out-Null
-    if ($failed) { $verityAiStatusText.Text = "Error: $reason" }
 })
 $aiJobTimer.Start()
 
