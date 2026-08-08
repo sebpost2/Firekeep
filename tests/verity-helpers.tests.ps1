@@ -200,6 +200,72 @@ Describe "Get-VerityRequiredSidecars" {
     Remove-Item -Recurse -Force $root -ErrorAction SilentlyContinue
 }
 
+Describe "Get-AllServerInstancePaths" {
+
+    $root = Join-Path $env:TEMP ("verity-instances-" + [Guid]::NewGuid().ToString("N"))
+
+    It "finds instance folders under each game, skipping _shared and _template" {
+        New-Item -ItemType Directory -Force -Path (Join-Path $root "Minecraft\servers\ServerA") | Out-Null
+        New-Item -ItemType Directory -Force -Path (Join-Path $root "Minecraft\servers\_template") | Out-Null
+        New-Item -ItemType Directory -Force -Path (Join-Path $root "_shared\servers\NotAGame") | Out-Null
+
+        $paths = Get-AllServerInstancePaths -GsRoot $root
+        ($paths -contains (Join-Path $root "Minecraft\servers\ServerA")) | Should Be $true
+        ($paths | Where-Object { $_ -like "*_template*" }) | Should Be $null
+        ($paths | Where-Object { $_ -like "*_shared*" }) | Should Be $null
+    }
+
+    Remove-Item -Recurse -Force $root -ErrorAction SilentlyContinue
+}
+
+Describe "Test-OtherVerityServerRunning" {
+
+    $root = Join-Path $env:TEMP ("verity-other-" + [Guid]::NewGuid().ToString("N"))
+
+    function New-FakeInstance([string]$Path, [bool]$HasVerity, [int]$Port) {
+        New-Item -ItemType Directory -Force -Path (Join-Path $Path "mods") | Out-Null
+        if ($HasVerity) {
+            Set-Content -Path (Join-Path $Path "mods\verity-6.1.jar") -Value "fake jar" -Encoding ascii
+        }
+        Set-Content -Path (Join-Path $Path "server.properties") -Value "server-port=$Port" -Encoding ascii
+    }
+
+    It "returns false when no other instance has Verity installed" {
+        $me = Join-Path $root "Minecraft\servers\Me"
+        $other = Join-Path $root "Minecraft\servers\Other"
+        New-FakeInstance -Path $me -HasVerity $true -Port 39301
+        New-FakeInstance -Path $other -HasVerity $false -Port 39302
+
+        Test-OtherVerityServerRunning -GsRoot $root -ExcludePath $me | Should Be $false
+    }
+
+    It "returns false when the other Verity instance isn't running" {
+        $me = Join-Path $root "Minecraft\servers\Me2"
+        $other = Join-Path $root "Minecraft\servers\Other2"
+        New-FakeInstance -Path $me -HasVerity $true -Port 39303
+        New-FakeInstance -Path $other -HasVerity $true -Port 39304
+
+        Test-OtherVerityServerRunning -GsRoot $root -ExcludePath $me | Should Be $false
+    }
+
+    It "returns true when another Verity instance is running" {
+        $me = Join-Path $root "Minecraft\servers\Me3"
+        $other = Join-Path $root "Minecraft\servers\Other3"
+        New-FakeInstance -Path $me -HasVerity $true -Port 39305
+        New-FakeInstance -Path $other -HasVerity $true -Port 39306
+
+        $listener = New-Object System.Net.Sockets.TcpListener([System.Net.IPAddress]::Loopback, 39306)
+        $listener.Start()
+        try {
+            Test-OtherVerityServerRunning -GsRoot $root -ExcludePath $me | Should Be $true
+        } finally {
+            $listener.Stop()
+        }
+    }
+
+    Remove-Item -Recurse -Force $root -ErrorAction SilentlyContinue
+}
+
 Describe "Test-SidecarHealthy" {
 
     It "returns false when nothing is listening" {

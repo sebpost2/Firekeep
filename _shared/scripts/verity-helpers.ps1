@@ -294,3 +294,45 @@ function Stop-VerityLocalAiStack {
     Stop-KokoroSidecar
     Stop-WhisperSidecar
 }
+
+# Every <Game>\servers\<Instance>\ folder under the GameServers root -
+# "_shared" is infrastructure, not a game; "_template" is the generic
+# scaffold, not a real instance. Same discovery rule as stop-server.ps1's
+# Get-AllServerInstances and gui-helpers.ps1's Get-ServerInstances.
+function Get-AllServerInstancePaths {
+    param(
+        [Parameter(Mandatory = $true)][string]$GsRoot
+    )
+    $result = @()
+    Get-ChildItem -Path $GsRoot -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -ne "_shared" } | ForEach-Object {
+        $serversDir = Join-Path $_.FullName "servers"
+        if (Test-Path $serversDir) {
+            Get-ChildItem -Path $serversDir -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -ne "_template" } | ForEach-Object {
+                $result += $_.FullName
+            }
+        }
+    }
+    return $result
+}
+
+# The sidecars are shared host-wide - stopping them when ONE Verity server
+# closes would break AI for another Verity server still running. This
+# checks whether any other instance is both Verity-enabled and currently up
+# (by its Minecraft port, not RCON - RCON may be disabled) before it's safe
+# to stop the sidecars.
+function Test-OtherVerityServerRunning {
+    param(
+        [Parameter(Mandatory = $true)][string]$GsRoot,
+        [Parameter(Mandatory = $true)][string]$ExcludePath
+    )
+    foreach ($path in (Get-AllServerInstancePaths -GsRoot $GsRoot)) {
+        if ($path -eq $ExcludePath) { continue }
+        if (-not (Test-VerityModPresent -InstancePath $path)) { continue }
+
+        $props = Read-ServerProperties (Join-Path $path "server.properties")
+        $port = 25565
+        if ($props["server-port"]) { $port = [int]$props["server-port"] }
+        if (Test-PortOpen -Port $port) { return $true }
+    }
+    return $false
+}
