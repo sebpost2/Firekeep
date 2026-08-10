@@ -145,62 +145,61 @@
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
-            <TextBlock Grid.Row="0" Text="LOCAL AI (VERITY)" Foreground="{StaticResource MutedTextBrush}"
-                       FontFamily="Segoe UI Semibold" FontSize="11" Margin="0,0,0,8"/>
 
-            <Grid Grid.Row="1" Margin="0,0,0,6">
+            <TextBlock Grid.Row="0" Text="LOCAL AI · VERITY" Foreground="{StaticResource MutedTextBrush}"
+                       FontFamily="Segoe UI Semibold" FontSize="12" Margin="0,0,0,12"/>
+
+            <UniformGrid Grid.Row="1" Rows="1" Columns="3" Margin="0,0,0,14">
+                <Border Background="{StaticResource PanelElevatedBrush}" CornerRadius="8" Margin="0,0,8,0" Padding="12,14"
+                        BorderBrush="{StaticResource BorderSubtleBrush}" BorderThickness="1">
+                    <StackPanel HorizontalAlignment="Center">
+                        <TextBlock Text="&#xE99A;" FontFamily="Segoe MDL2 Assets" FontSize="20" Foreground="{StaticResource TextBrush}" HorizontalAlignment="Center"/>
+                        <TextBlock Text="Core LLM" Foreground="{StaticResource TextBrush}" FontFamily="Segoe UI Semibold" FontSize="12" HorizontalAlignment="Center" Margin="0,6,0,2"/>
+                        <TextBlock Text="Ollama" Foreground="{StaticResource MutedTextBrush}" FontFamily="Segoe UI" FontSize="10" HorizontalAlignment="Center" Margin="0,0,0,8"/>
+                        <TextBlock x:Name="VerityOllamaStatusText" Text="OUT" Style="{StaticResource StatusPillStyle}" Margin="0,0,0,8"/>
+                        <Button x:Name="VerityOllamaButton" Content="START" Style="{StaticResource LinkButtonStyle}" HorizontalAlignment="Center"/>
+                    </StackPanel>
+                </Border>
+                <Border Background="{StaticResource PanelElevatedBrush}" CornerRadius="8" Margin="0,0,8,0" Padding="12,14"
+                        BorderBrush="{StaticResource BorderSubtleBrush}" BorderThickness="1">
+                    <StackPanel HorizontalAlignment="Center">
+                        <TextBlock Text="&#xE995;" FontFamily="Segoe MDL2 Assets" FontSize="20" Foreground="{StaticResource TextBrush}" HorizontalAlignment="Center"/>
+                        <TextBlock Text="Voice out" Foreground="{StaticResource TextBrush}" FontFamily="Segoe UI Semibold" FontSize="12" HorizontalAlignment="Center" Margin="0,6,0,2"/>
+                        <TextBlock Text="Kokoro" Foreground="{StaticResource MutedTextBrush}" FontFamily="Segoe UI" FontSize="10" HorizontalAlignment="Center" Margin="0,0,0,8"/>
+                        <TextBlock x:Name="VerityKokoroStatusText" Text="OUT" Style="{StaticResource StatusPillStyle}" Margin="0,0,0,8"/>
+                        <Button x:Name="VerityKokoroButton" Content="START" Style="{StaticResource LinkButtonStyle}" HorizontalAlignment="Center"/>
+                    </StackPanel>
+                </Border>
+                <Border Background="{StaticResource PanelElevatedBrush}" CornerRadius="8" Padding="12,14"
+                        BorderBrush="{StaticResource BorderSubtleBrush}" BorderThickness="1">
+                    <StackPanel HorizontalAlignment="Center">
+                        <TextBlock Text="&#xE720;" FontFamily="Segoe MDL2 Assets" FontSize="20" Foreground="{StaticResource TextBrush}" HorizontalAlignment="Center"/>
+                        <TextBlock Text="Voice in" Foreground="{StaticResource TextBrush}" FontFamily="Segoe UI Semibold" FontSize="12" HorizontalAlignment="Center" Margin="0,6,0,2"/>
+                        <TextBlock Text="Whisper" Foreground="{StaticResource MutedTextBrush}" FontFamily="Segoe UI" FontSize="10" HorizontalAlignment="Center" Margin="0,0,0,8"/>
+                        <TextBlock x:Name="VerityWhisperStatusText" Text="OUT" Style="{StaticResource StatusPillStyle}" Margin="0,0,0,8"/>
+                        <Button x:Name="VerityWhisperButton" Content="START" Style="{StaticResource LinkButtonStyle}" HorizontalAlignment="Center"/>
+                    </StackPanel>
+                </Border>
+            </UniformGrid>
+
+            <TextBlock Grid.Row="2" Text="GROQ API KEY (used when not local)" Foreground="{StaticResource MutedTextBrush}"
+                       FontFamily="Segoe UI Semibold" FontSize="11" Margin="0,0,0,6"/>
+
+            <Grid Grid.Row="3" Margin="0,0,0,12">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
-                <TextBlock Grid.Column="0" x:Name="VerityOllamaStatusText" Text="Core LLM (Ollama): OUT"
-                           Foreground="{StaticResource TextBrush}" FontFamily="Consolas" FontSize="12" VerticalAlignment="Center"/>
-                <Button Grid.Column="1" x:Name="VerityOllamaButton" Content="START" Style="{StaticResource LinkButtonStyle}"
-                        Foreground="{StaticResource AccentBrush}"/>
-            </Grid>
-
-            <Grid Grid.Row="2" Margin="0,0,0,6">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
-                <TextBlock Grid.Column="0" x:Name="VerityKokoroStatusText" Text="Voice out (Kokoro): OUT"
-                           Foreground="{StaticResource TextBrush}" FontFamily="Consolas" FontSize="12" VerticalAlignment="Center"/>
-                <Button Grid.Column="1" x:Name="VerityKokoroButton" Content="START" Style="{StaticResource LinkButtonStyle}"
-                        Foreground="{StaticResource AccentBrush}"/>
-            </Grid>
-
-            <Grid Grid.Row="3" Margin="0,0,0,10">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
-                <TextBlock Grid.Column="0" x:Name="VerityWhisperStatusText" Text="Voice in (Whisper): OUT"
-                           Foreground="{StaticResource TextBrush}" FontFamily="Consolas" FontSize="12" VerticalAlignment="Center"/>
-                <Button Grid.Column="1" x:Name="VerityWhisperButton" Content="START" Style="{StaticResource LinkButtonStyle}"
-                        Foreground="{StaticResource AccentBrush}"/>
-            </Grid>
-
-            <TextBlock Grid.Row="4" Text="GROQ API KEY (used when not local)" Foreground="{StaticResource MutedTextBrush}"
-                       FontFamily="Segoe UI Semibold" FontSize="10" Margin="0,4,0,4"/>
-
-            <Grid Grid.Row="5" Margin="0,0,0,10">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
-                <PasswordBox Grid.Column="0" x:Name="VerityApiKeyBox" FontFamily="Consolas" FontSize="12"
+                <PasswordBox Grid.Column="0" x:Name="VerityApiKeyBox" FontFamily="Consolas" FontSize="13"
                              Background="{StaticResource PanelElevatedBrush}" Foreground="{StaticResource TextBrush}"
-                             BorderBrush="{StaticResource BorderSubtleBrush}" BorderThickness="1" Padding="6,4"
+                             BorderBrush="{StaticResource BorderSubtleBrush}" BorderThickness="1" Padding="8,6"
                              VerticalContentAlignment="Center"/>
                 <Button Grid.Column="1" x:Name="VerityApiKeySaveButton" Content="SAVE" Style="{StaticResource LinkButtonStyle}"
                         Foreground="{StaticResource AccentBrush}" Margin="8,0,0,0"/>
             </Grid>
 
-            <Button Grid.Row="6" x:Name="VerityAiStopAllButton" Content="STOP ALL" Style="{StaticResource LinkButtonStyle}"
+            <Button Grid.Row="4" x:Name="VerityAiStopAllButton" Content="STOP ALL" Style="{StaticResource LinkButtonStyle}"
                     Foreground="{StaticResource MutedTextBrush}" HorizontalAlignment="Right"/>
         </Grid>
     </Border>

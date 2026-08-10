@@ -215,7 +215,7 @@ function Sync-StatusDisplay {
         foreach ($svc in $verityServices) {
             if ($script:aiJobs[$svc.Key]) { continue }
             $running = Test-PortOpen -Port $svc.Port
-            $svc.StatusText.Text = "$($svc.Label): $((Get-ServerStatusView -IsRunning $running).Label)"
+            $svc.StatusText.Text = (Get-ServerStatusView -IsRunning $running).Label
             $svc.Button.Content = if ($running) { "STOP" } else { "START" }
             $svc.Button.IsEnabled = $true
         }
@@ -286,13 +286,13 @@ function Invoke-VerityServiceToggle {
 
     $running = Test-PortOpen -Port $svc.Port
     if ($running -and (Test-OtherVerityServerRunning -GsRoot $root -ExcludePath $script:selected.Path)) {
-        $svc.StatusText.Text = "$($svc.Label): In use by another server, not stopping"
+        $svc.StatusText.Text = "In use elsewhere"
         $svc.Button.IsEnabled = $true
         return
     }
 
     $svc.Button.IsEnabled = $false
-    $svc.StatusText.Text = "$($svc.Label): $(if ($running) { 'Stopping...' } else { 'Starting...' })"
+    $svc.StatusText.Text = if ($running) { 'Stopping...' } else { 'Starting...' }
     $script:aiJobs[$svc.Key] = Start-Job -ScriptBlock {
         param($GsRoot, $InstancePath, $McRoot, $Service, $ToLocal)
         . (Join-Path $GsRoot "_shared\scripts\verity-helpers.ps1")
@@ -773,7 +773,7 @@ $aiJobTimer.Add_Tick({
     # more often than needed for no reason.
     if ($settled.Count -gt 0) {
         Sync-StatusDisplay | Out-Null
-        foreach ($s in $settled) { $s.Svc.StatusText.Text = "$($s.Svc.Label): Error - $($s.Reason)" }
+        foreach ($s in $settled) { $s.Svc.StatusText.Text = "Error: $($s.Reason)" }
     }
 })
 $aiJobTimer.Start()
