@@ -131,26 +131,26 @@ Describe "Get-ScreenSize" {
 
     It "returns the Home screen size" {
         $s = Get-ScreenSize -Screen "Home"
-        $s.Width | Should Be 420
-        $s.Height | Should Be 660
+        $s.Width | Should Be 640
+        $s.Height | Should Be 860
     }
 
     It "returns the Manage Maps screen size" {
         $s = Get-ScreenSize -Screen "ManageMaps"
-        $s.Width | Should Be 440
-        $s.Height | Should Be 580
+        $s.Width | Should Be 480
+        $s.Height | Should Be 640
     }
 
     It "returns the Add Server screen size" {
         $s = Get-ScreenSize -Screen "AddServer"
-        $s.Width | Should Be 440
-        $s.Height | Should Be 500
+        $s.Width | Should Be 480
+        $s.Height | Should Be 580
     }
 
     It "returns the Console screen size" {
         $s = Get-ScreenSize -Screen "Console"
-        $s.Width | Should Be 560
-        $s.Height | Should Be 640
+        $s.Width | Should Be 640
+        $s.Height | Should Be 720
     }
 
     It "throws a clear error for an unrecognized screen" {

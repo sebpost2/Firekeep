@@ -85,10 +85,10 @@ function Get-ScreenSize {
         [Parameter(Mandatory = $true)][string]$Screen
     )
     switch ($Screen) {
-        "Home"       { return [PSCustomObject]@{ Width = 420; Height = 660 } }
-        "ManageMaps" { return [PSCustomObject]@{ Width = 440; Height = 580 } }
-        "AddServer"  { return [PSCustomObject]@{ Width = 440; Height = 500 } }
-        "Console"    { return [PSCustomObject]@{ Width = 560; Height = 640 } }
+        "Home"       { return [PSCustomObject]@{ Width = 640; Height = 860 } }
+        "ManageMaps" { return [PSCustomObject]@{ Width = 480; Height = 640 } }
+        "AddServer"  { return [PSCustomObject]@{ Width = 480; Height = 580 } }
+        "Console"    { return [PSCustomObject]@{ Width = 640; Height = 720 } }
         default { throw "Unrecognized screen '$Screen'." }
     }
 }
