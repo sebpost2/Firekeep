@@ -23,7 +23,7 @@ New function (co-located with other network/address helpers — likely `_shared\
 
 ### 2. Manual address override
 
-Stored per-server-instance as a small text file, `manual-address.txt`, in the instance's own folder — same pattern as the existing cached `address.txt` for playit's resolved domain, just a distinct file so the two don't collide and playit's own cache logic is untouched.
+**Correction found during planning:** `Update-AddressDisplay` and playit.gg's `secret.key`/`address.txt` are app-wide (`_shared\tools\playit\`), not per-server-instance — there's one tunnel for the whole app, not one per Minecraft server. The manual override follows the same shape: stored app-wide as `_shared\tools\playit\manual-address.txt`, alongside the existing `address.txt`, rather than inside each server's own folder. One override value applies regardless of which server is selected, since it represents "my network's address," not a per-server fact.
 
 ### 3. Home screen UI
 
@@ -55,3 +55,4 @@ Home screen load / server select → `Update-AddressDisplay` reads `manual-addre
 - Manual override lives on the Home screen, always visible when playit isn't active — not tucked into a secondary/advanced screen, since it's a direct alternative to the tunnel-setup button that's already there.
 - No address validation — trust the user.
 - Separate cache file from playit's `address.txt` rather than reusing/overloading it, to keep the two address sources independently inspectable and avoid cache-invalidation ordering bugs between them.
+- App-wide storage (matching playit's own `_shared\tools\playit\` location), not per-server-instance — corrected during planning once the existing code showed playit itself is app-wide, not per-instance.
