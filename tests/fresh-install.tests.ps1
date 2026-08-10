@@ -50,14 +50,28 @@ try {
         $tempScriptFile = Join-Path $env:TEMP ("fresh-install-test-" + [Guid]::NewGuid().ToString("N") + ".ps1")
         Set-Content -Path $tempScriptFile -Value $subScript
 
-        & powershell.exe -STA -NoProfile -ExecutionPolicy Bypass -File $tempScriptFile
-        $exitCode = $LASTEXITCODE
+        # Bounded well above GUI_TEST_AUTOCLOSE_MS (3000ms) so a healthy run
+        # never trips it, but a regressed/removed auto-close hook fails this
+        # test instead of hanging forever.
+        $job = Start-Job -ScriptBlock {
+            param($file)
+            & powershell.exe -STA -NoProfile -ExecutionPolicy Bypass -File $file
+            $LASTEXITCODE
+        } -ArgumentList $tempScriptFile
+
+        $timedOut = -not (Wait-Job -Job $job -Timeout 30)
+        if ($timedOut) {
+            Stop-Job -Job $job
+        }
+        $exitCode = if ($timedOut) { $null } else { Receive-Job -Job $job }
+        Remove-Job -Job $job -Force
 
         $script:result = if (Test-Path $resultsFile) { Get-Content $resultsFile -Raw } else { "NO RESULT FILE" }
 
         Remove-Item -Path $tempScriptFile -ErrorAction SilentlyContinue
         Remove-Item -Path $resultsFile -ErrorAction SilentlyContinue
 
+        $timedOut | Should Be $false "subprocess did not exit within timeout"
         $exitCode | Should Be 0
         $script:result | Should Match "^OK"
     }
