@@ -996,6 +996,21 @@ Sync-StatusDisplay | Out-Null
 Update-AddressDisplay
 Show-Screen "Home"
 
+# Test-only: lets tests/fresh-install.tests.ps1 launch this script headlessly
+# and close it after startup completes, without a human. Inert unless this
+# env var is explicitly set - never active for a real user (Start.bat,
+# manual `powershell.exe -File Start-Gui.ps1`).
+if ($env:GUI_TEST_AUTOCLOSE_MS) {
+    $autoCloseTimer = New-Object System.Windows.Threading.DispatcherTimer
+    $autoCloseTimer.Interval = [TimeSpan]::FromMilliseconds([int]$env:GUI_TEST_AUTOCLOSE_MS)
+    $autoCloseTimer.Add_Tick({
+        $autoCloseTimer.Stop()
+        $script:okToClose = $true
+        $window.Close()
+    })
+    $autoCloseTimer.Start()
+}
+
 $window.ShowDialog() | Out-Null
 $timer.Stop()
 $addJobTimer.Stop()
