@@ -20,19 +20,16 @@ $root = $PSScriptRoot
 
 Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase
 
-$script:theme = $null
+if (-not [System.Windows.Application]::Current) {
+    $null = New-Object System.Windows.Application
+}
+[xml]$themeXml = Get-Content -Path (Join-Path $root "_shared\gui\Theme.xaml") -Raw
+[System.Windows.Application]::Current.Resources.MergedDictionaries.Add(
+    [Windows.Markup.XamlReader]::Load((New-Object System.Xml.XmlNodeReader $themeXml)))
 
 function Get-ScreenXaml([string]$FileName) {
     [xml]$xamlXml = Get-Content -Path (Join-Path $root "_shared\gui\$FileName") -Raw
-    $element = [Windows.Markup.XamlReader]::Load((New-Object System.Xml.XmlNodeReader $xamlXml))
-
-    if (-not $script:theme) {
-        [xml]$themeXml = Get-Content -Path (Join-Path $root "_shared\gui\Theme.xaml") -Raw
-        $script:theme = [Windows.Markup.XamlReader]::Load((New-Object System.Xml.XmlNodeReader $themeXml))
-    }
-    $element.Resources.MergedDictionaries.Add($script:theme)
-
-    return $element
+    return [Windows.Markup.XamlReader]::Load((New-Object System.Xml.XmlNodeReader $xamlXml))
 }
 
 $script:instances = @(Get-ServerInstances -Root $root)
