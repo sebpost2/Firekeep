@@ -5,7 +5,7 @@ Describe "Get-ReleaseFiles" {
     $fixtureRoot = Join-Path $env:TEMP ("release-fixture-" + [Guid]::NewGuid().ToString("N"))
     $paths = @(
         "Start.bat", "Start-Gui.ps1",
-        "README.md", ".gitignore",
+        "README.md", ".gitignore", "VERSION",
         "_shared\scripts\rcon.ps1",
         "_shared\gui\MainWindow.xaml",
         "_shared\gui\ManageMapsScreen.xaml",
@@ -59,6 +59,10 @@ Describe "Get-ReleaseFiles" {
 
     It "includes the public README.md" {
         ($result -contains (Join-Path $fixtureRoot "README.md")) | Should Be $true
+    }
+
+    It "includes the VERSION file" {
+        ($result -contains (Join-Path $fixtureRoot "VERSION")) | Should Be $true
     }
 
     It "excludes the playit secret and cached address" {

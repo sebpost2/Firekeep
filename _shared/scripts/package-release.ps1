@@ -23,7 +23,7 @@ function Get-ReleaseFiles {
 
     $include = @(
         "Start.bat", "Start-Gui.ps1",
-        "README.md", ".gitignore",
+        "README.md", ".gitignore", "VERSION",
         "_shared\gui",
         "_shared\scripts",
         "_shared\tools\mrpack.exe",
