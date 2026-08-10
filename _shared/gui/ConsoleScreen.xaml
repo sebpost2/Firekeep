@@ -39,7 +39,7 @@
             <ColumnDefinition Width="*"/>
             <ColumnDefinition Width="Auto"/>
         </Grid.ColumnDefinitions>
-        <TextBox Grid.Column="0" x:Name="CommandBox" Style="{StaticResource CommandBoxStyle}"/>
+        <TextBox Grid.Column="0" x:Name="CommandBox"/>
         <Button Grid.Column="1" x:Name="SendButton" Content="Send" Style="{StaticResource SendButtonStyle}" Margin="8,0,0,0"/>
     </Grid>
 </Grid>
