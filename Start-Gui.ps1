@@ -92,6 +92,9 @@ $mapsButton       = $homeRoot.FindName("MapsButton")
 $consoleButton    = $homeRoot.FindName("ConsoleButton")
 $newServerButton  = $homeRoot.FindName("NewServerButton")
 $setupTunnelButton = $homeRoot.FindName("SetupTunnelButton")
+$versionText = $homeRoot.FindName("VersionText")
+$appVersion = Get-AppVersion -Root $root
+if ($appVersion) { $versionText.Text = "v$appVersion" }
 $verityAiPanel = $homeRoot.FindName("VerityAiPanel")
 $verityServices = @(
     [PSCustomObject]@{ Key = "Ollama";  Port = 11434; Label = "Core LLM (Ollama)";  StatusText = $homeRoot.FindName("VerityOllamaStatusText");  Button = $homeRoot.FindName("VerityOllamaButton") }

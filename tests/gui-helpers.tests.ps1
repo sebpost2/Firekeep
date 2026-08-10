@@ -230,3 +230,23 @@ Describe "Get-LogTailChunk" {
 
     Remove-Item -Recurse -Force $root -ErrorAction SilentlyContinue
 }
+
+Describe "Get-AppVersion" {
+
+    $root = Join-Path $env:TEMP ("gui-helpers-version-fixture-" + [Guid]::NewGuid().ToString("N"))
+    New-Item -ItemType Directory -Force -Path $root | Out-Null
+
+    It "reads and trims the VERSION file contents" {
+        Set-Content -Path (Join-Path $root "VERSION") -Value "1.0.0`r`n"
+        Get-AppVersion -Root $root | Should Be "1.0.0"
+    }
+
+    It "returns an empty string when VERSION is missing" {
+        $emptyRoot = Join-Path $env:TEMP ("gui-helpers-version-empty-" + [Guid]::NewGuid().ToString("N"))
+        New-Item -ItemType Directory -Force -Path $emptyRoot | Out-Null
+        Get-AppVersion -Root $emptyRoot | Should Be ""
+        Remove-Item -Recurse -Force $emptyRoot -ErrorAction SilentlyContinue
+    }
+
+    Remove-Item -Recurse -Force $root -ErrorAction SilentlyContinue
+}

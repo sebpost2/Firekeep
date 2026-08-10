@@ -20,6 +20,8 @@
                    FontFamily="Segoe UI Black" FontSize="28" HorizontalAlignment="Center"/>
         <TextBlock Text="Your friends' world, one click away" Foreground="{StaticResource MutedTextBrush}"
                    FontFamily="Segoe UI" FontSize="13" HorizontalAlignment="Center" Margin="0,4,0,0"/>
+        <TextBlock x:Name="VersionText" Text="" Foreground="{StaticResource MutedTextBrush}"
+                   FontFamily="Segoe UI" FontSize="10" HorizontalAlignment="Center" Margin="0,2,0,0"/>
     </StackPanel>
 
     <!-- Server picker -->

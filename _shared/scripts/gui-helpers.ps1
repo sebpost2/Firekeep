@@ -141,6 +141,21 @@ function Get-LogTailChunk {
     }
 }
 
+# Best-effort read of the repo-root VERSION file for the Home screen label.
+# Never throws - a missing/unreadable file just means no label is shown.
+function Get-AppVersion {
+    param(
+        [Parameter(Mandatory = $true)][string]$Root
+    )
+    $versionFile = Join-Path $Root "VERSION"
+    if (-not (Test-Path $versionFile)) { return "" }
+    try {
+        return (Get-Content -Path $versionFile -Raw -ErrorAction Stop).Trim()
+    } catch {
+        return ""
+    }
+}
+
 # Kills a process and everything it spawned (children first, so a hard kill
 # of the launcher doesn't orphan the java/playit processes underneath it).
 # Used to abort a server that's still starting (before RCON is even up, so
