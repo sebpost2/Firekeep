@@ -86,6 +86,9 @@ $fireIcon         = $homeRoot.FindName("FireVisual")
 $statusLabel      = $homeRoot.FindName("StatusLabel")
 $addressText      = $homeRoot.FindName("AddressText")
 $copyButton       = $homeRoot.FindName("CopyButton")
+$manualAddressRow = $homeRoot.FindName("ManualAddressRow")
+$manualAddressBox = $homeRoot.FindName("ManualAddressBox")
+$manualAddressSaveButton = $homeRoot.FindName("ManualAddressSaveButton")
 $actionButton     = $homeRoot.FindName("ActionButton")
 $homeHintText     = $homeRoot.FindName("HintText")
 $mapsButton       = $homeRoot.FindName("MapsButton")
@@ -156,15 +159,27 @@ function Get-SelectedRconPort {
     return 25575
 }
 
-# Reads the shareable address the same way show-address.ps1 does: ask
-# playit.gg once, fall back to the cached address.txt if that fails.
+function Get-SelectedServerPort {
+    if (-not $script:selected) { return 25565 }
+    $props = Read-ServerProperties (Join-Path $script:selected.Path "server.properties")
+    if ($props["server-port"]) { return [int]$props["server-port"] }
+    return 25565
+}
+
+# Reads the shareable address, in priority order: a saved manual override,
+# then playit.gg (ask once, fall back to the cached address.txt if that
+# fails - same as show-address.ps1), then this machine's LAN IP.
 function Update-AddressDisplay {
     $toolDir = Join-Path $root "_shared\tools\playit"
     $secretFile = Join-Path $toolDir "secret.key"
     $addrFile = Join-Path $toolDir "address.txt"
+    $manualFile = Join-Path $toolDir "manual-address.txt"
     $addr = $null
 
-    if (Test-Path $secretFile) {
+    $manual = if (Test-Path $manualFile) { (Get-Content $manualFile -Raw).Trim() } else { "" }
+    $manualAddressBox.Text = $manual
+
+    if (-not $manual -and (Test-Path $secretFile)) {
         try {
             $secret = (Get-Content $secretFile -Raw).Trim()
             $rd = Invoke-RestMethod -Uri "https://api.playit.gg/agents/rundata" -Method Post -Body "{}" `
@@ -178,15 +193,19 @@ function Update-AddressDisplay {
         if (-not $addr -and (Test-Path $addrFile)) { $addr = (Get-Content $addrFile -Raw).Trim() }
     }
 
-    if ($addr) {
-        $addressText.Text = $addr
+    $lan = if (-not $manual -and -not $addr) { Get-LanAddress -Port (Get-SelectedServerPort) } else { "" }
+    $resolved = Resolve-DisplayAddress -Manual $manual -Playit $addr -Lan $lan
+
+    if ($resolved) {
+        $addressText.Text = $resolved
         $copyButton.IsEnabled = $true
-        $setupTunnelButton.Visibility = "Collapsed"
     } else {
         $addressText.Text = "Same WiFi only (no sharing set up yet)"
         $copyButton.IsEnabled = $false
-        $setupTunnelButton.Visibility = "Visible"
     }
+
+    $setupTunnelButton.Visibility = if ($addr) { "Collapsed" } else { "Visible" }
+    $manualAddressRow.Visibility = if ($addr) { "Collapsed" } else { "Visible" }
 }
 
 # Refreshes the campfire/status/button display from real port state, and
@@ -337,6 +356,19 @@ $verityApiKeyBox.Add_PasswordChanged({ $verityApiKeySaveButton.Content = "SAVE" 
 
 $copyButton.Add_Click({
     if ($copyButton.IsEnabled) { Set-Clipboard -Value $addressText.Text }
+})
+
+$manualAddressSaveButton.Add_Click({
+    $toolDir = Join-Path $root "_shared\tools\playit"
+    New-Item -ItemType Directory -Force -Path $toolDir | Out-Null
+    $manualFile = Join-Path $toolDir "manual-address.txt"
+    $value = $manualAddressBox.Text.Trim()
+    if ($value) {
+        Set-Content -Path $manualFile -Value $value -NoNewline -Encoding ascii
+    } else {
+        Remove-Item -Path $manualFile -Force -ErrorAction SilentlyContinue
+    }
+    Update-AddressDisplay
 })
 
 $setupTunnelButton.Add_Click({

@@ -85,14 +85,32 @@
             <!-- Address -->
             <Border Grid.Row="1" Background="{StaticResource PanelElevatedBrush}" CornerRadius="6" Padding="14,12" Margin="0,18,0,0">
                 <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" x:Name="AddressText" Text="Checking..." Foreground="{StaticResource TextBrush}"
+                    <TextBlock Grid.Row="0" Grid.Column="0" x:Name="AddressText" Text="Checking..." Foreground="{StaticResource TextBrush}"
                                FontFamily="Consolas" FontSize="14" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
-                    <Button Grid.Column="1" x:Name="CopyButton" Content="Copy" Style="{StaticResource LinkButtonStyle}"
+                    <Button Grid.Row="0" Grid.Column="1" x:Name="CopyButton" Content="Copy" Style="{StaticResource LinkButtonStyle}"
                             Foreground="{StaticResource AccentBrush}" IsEnabled="False"/>
+
+                    <Grid Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" x:Name="ManualAddressRow" Margin="0,10,0,0" Visibility="Collapsed">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBox Grid.Column="0" x:Name="ManualAddressBox" FontFamily="Consolas" FontSize="12"
+                                 Background="{StaticResource PanelBrush}" Foreground="{StaticResource TextBrush}"
+                                 BorderBrush="{StaticResource BorderSubtleBrush}" BorderThickness="1" Padding="6,4"
+                                 VerticalContentAlignment="Center"
+                                 ToolTip="Have your own port forwarded? Enter that address here."/>
+                        <Button Grid.Column="1" x:Name="ManualAddressSaveButton" Content="USE THIS" Style="{StaticResource LinkButtonStyle}"
+                                Foreground="{StaticResource AccentBrush}" Margin="8,0,0,0"/>
+                    </Grid>
                 </Grid>
             </Border>
         </Grid>
