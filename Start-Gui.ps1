@@ -64,14 +64,18 @@ $overlay = @{
 }
 
 $script:currentScreen = "Home"
+$script:sizedScreens = @{}
 function Show-Screen([string]$Screen) {
     $homeHost.Visibility = if ($Screen -eq "Home") { "Visible" } else { "Collapsed" }
     $mapsHost.Visibility = if ($Screen -eq "ManageMaps") { "Visible" } else { "Collapsed" }
     $addHost.Visibility = if ($Screen -eq "AddServer") { "Visible" } else { "Collapsed" }
     $consoleHost.Visibility = if ($Screen -eq "Console") { "Visible" } else { "Collapsed" }
-    $size = Get-ScreenSize -Screen $Screen
-    $window.Width = $size.Width
-    $window.Height = $size.Height
+    if (-not $script:sizedScreens[$Screen]) {
+        $size = Get-ScreenSize -Screen $Screen
+        $window.Width = $size.Width
+        $window.Height = $size.Height
+        $script:sizedScreens[$Screen] = $true
+    }
     $script:currentScreen = $Screen
 }
 
