@@ -1,7 +1,9 @@
 # Firekeep — Quick Guide
 
-This folder lets you run game servers on your own PC, using **playit.gg** so
-people can connect without opening ports on your router.
+This folder lets you run Minecraft servers on your own PC, using **playit.gg**
+so people can connect without opening ports on your router. The structure is
+organized so it could scale to other games down the road, but right now it's
+Minecraft only.
 
 It's all **free** (Adoptium Java + playit.gg) and you don't need to install
 anything by hand: Java downloads itself the first time it's needed.
@@ -117,17 +119,10 @@ Without this step, the server still works for people on your same WiFi
 ## Remote friends lagging / mod handshake cutting out?
 
 If the connection with friends from outside is unstable (rubber-banding,
-timeouts, mod sync cutting out), there's a general troubleshooting rundown:
-
-1. **Try this first (free, 2 min):** in the playit.gg panel, set the agent to
-   **IPv4 only** and pick the closest **region**. This targets a common
-   flaky-IPv6 issue head-on. Nothing changes for your friends.
-2. **Most stable free option:** switch to **Tailscale** (virtual LAN). Each
-   friend installs Tailscale and logs in once; they connect via an IP like
-   `100.x.x.x:25565`. Find your own Tailscale IP in the Tailscale tray
-   icon/app on your PC (click your device — no need for a separate script).
-3. **If you want to pay and forget about it:** managed hosting (~$20–24/mo) —
-   no tunnel, no VPN, 24/7, the best experience for everyone.
+timeouts, mod sync cutting out), try this first (free, 2 min): in the
+playit.gg panel, set the agent to **IPv4 only** and pick the closest
+**region**. This targets a common flaky-IPv6 issue head-on. Nothing changes
+for your friends.
 
 ---
 
