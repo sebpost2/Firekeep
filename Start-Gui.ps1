@@ -15,6 +15,7 @@ $root = $PSScriptRoot
 . (Join-Path $root "_shared\scripts\tunnel-helpers.ps1")
 . (Join-Path $root "_shared\scripts\worlds-helpers.ps1")
 . (Join-Path $root "_shared\scripts\new-server-helpers.ps1")
+. (Join-Path $root "_shared\scripts\server-settings-helpers.ps1")
 . (Join-Path $root "_shared\scripts\gui-dialogs.ps1")
 . (Join-Path $root "_shared\scripts\verity-helpers.ps1")
 
@@ -42,18 +43,21 @@ $mapsHost = $window.FindName("MapsHost")
 $addHost = $window.FindName("AddServerHost")
 $consoleHost = $window.FindName("ConsoleHost")
 $overlayHost = $window.FindName("OverlayHost")
+$settingsHost = $window.FindName("SettingsHost")
 
 $homeRoot = Get-ScreenXaml "HomeScreen.xaml"
 $mapsRoot = Get-ScreenXaml "ManageMapsScreen.xaml"
 $addRoot = Get-ScreenXaml "AddServerScreen.xaml"
 $consoleRoot = Get-ScreenXaml "ConsoleScreen.xaml"
 $overlayRoot = Get-ScreenXaml "PromptOverlay.xaml"
+$settingsRoot = Get-ScreenXaml "ServerSettingsScreen.xaml"
 
 $homeHost.Content = $homeRoot
 $mapsHost.Content = $mapsRoot
 $addHost.Content = $addRoot
 $consoleHost.Content = $consoleRoot
 $overlayHost.Content = $overlayRoot
+$settingsHost.Content = $settingsRoot
 
 $overlay = @{
     Host         = $overlayHost
@@ -70,6 +74,7 @@ function Show-Screen([string]$Screen) {
     $mapsHost.Visibility = if ($Screen -eq "ManageMaps") { "Visible" } else { "Collapsed" }
     $addHost.Visibility = if ($Screen -eq "AddServer") { "Visible" } else { "Collapsed" }
     $consoleHost.Visibility = if ($Screen -eq "Console") { "Visible" } else { "Collapsed" }
+    $settingsHost.Visibility = if ($Screen -eq "ServerSettings") { "Visible" } else { "Collapsed" }
     if (-not $script:sizedScreens[$Screen]) {
         $size = Get-ScreenSize -Screen $Screen
         $window.Width = $size.Width
@@ -92,6 +97,7 @@ $manualAddressSaveButton = $homeRoot.FindName("ManualAddressSaveButton")
 $actionButton     = $homeRoot.FindName("ActionButton")
 $homeHintText     = $homeRoot.FindName("HintText")
 $mapsButton       = $homeRoot.FindName("MapsButton")
+$settingsButton   = $homeRoot.FindName("SettingsButton")
 $consoleButton    = $homeRoot.FindName("ConsoleButton")
 $newServerButton  = $homeRoot.FindName("NewServerButton")
 $setupTunnelButton = $homeRoot.FindName("SetupTunnelButton")
@@ -417,6 +423,19 @@ $importButton      = $mapsRoot.FindName("ImportButton")
 $deleteButton      = $mapsRoot.FindName("DeleteButton")
 $trashToggleButton = $mapsRoot.FindName("TrashToggleButton")
 
+$settingsBackButton      = $settingsRoot.FindName("BackButton")
+$settingsSubtitleText    = $settingsRoot.FindName("SubtitleText")
+$difficultyCombo         = $settingsRoot.FindName("DifficultyCombo")
+$pvpCheck                = $settingsRoot.FindName("PvpCheck")
+$whitelistCheck          = $settingsRoot.FindName("WhitelistCheck")
+$maxPlayersBox           = $settingsRoot.FindName("MaxPlayersBox")
+$motdBox                 = $settingsRoot.FindName("MotdBox")
+$spawnProtectionBox      = $settingsRoot.FindName("SpawnProtectionBox")
+$advancedToggleButton    = $settingsRoot.FindName("AdvancedToggleButton")
+$advancedBox             = $settingsRoot.FindName("AdvancedBox")
+$settingsHintText        = $settingsRoot.FindName("HintText")
+$saveSettingsButton      = $settingsRoot.FindName("SaveButton")
+
 $TrashDirName = "_trash"
 $script:mapsInstancePath = $null
 $script:mapsPropsPath = $null
@@ -494,6 +513,68 @@ function Enter-ManageMapsScreen {
 }
 
 $mapsBackButton.Add_Click({ Show-Screen "Home" })
+
+# Called from the Home screen's "Server Settings" click, right before
+# showing this screen, so it always reflects whichever server is currently
+# selected and the file's current on-disk state.
+function Enter-ServerSettingsScreen {
+    $script:settingsPropsPath = Join-Path $script:selected.Path "server.properties"
+    $settingsSubtitleText.Text = $script:selected.Name
+
+    $props = Read-ServerProperties $script:settingsPropsPath
+    $curated = Get-CuratedPropertyValues -Props $props
+
+    $difficultyCombo.SelectedItem = $difficultyCombo.Items | Where-Object { $_.Content -eq $curated["difficulty"] } | Select-Object -First 1
+    $pvpCheck.IsChecked = ($curated["pvp"] -eq "true")
+    $whitelistCheck.IsChecked = ($curated["white-list"] -eq "true")
+    $maxPlayersBox.Text = $curated["max-players"]
+    $motdBox.Text = $curated["motd"]
+    $spawnProtectionBox.Text = $curated["spawn-protection"]
+
+    $advancedBox.Text = Get-AdvancedPropertiesText -Path $script:settingsPropsPath
+    $advancedBox.Visibility = "Collapsed"
+    $advancedToggleButton.Content = "Show advanced settings"
+
+    if (Test-PortOpen -Port (Get-SelectedRconPort)) {
+        $settingsHintText.Text = "The server looks like it's running - stop it first to make changes."
+    } else {
+        $settingsHintText.Text = " "
+    }
+}
+
+$settingsBackButton.Add_Click({ Show-Screen "Home" })
+
+$advancedToggleButton.Add_Click({
+    if ($advancedBox.Visibility -eq "Visible") {
+        $advancedBox.Visibility = "Collapsed"
+        $advancedToggleButton.Content = "Show advanced settings"
+    } else {
+        $advancedBox.Visibility = "Visible"
+        $advancedToggleButton.Content = "Hide advanced settings"
+    }
+})
+
+$saveSettingsButton.Add_Click({
+    if (Test-PortOpen -Port (Get-SelectedRconPort)) {
+        $settingsHintText.Text = "Stop the server before saving changes."
+        return
+    }
+
+    $props = Read-ServerProperties $script:settingsPropsPath
+    $curated = Get-CuratedPropertyValues -Props $props
+
+    Set-ServerProperty $script:settingsPropsPath "difficulty" $difficultyCombo.SelectedItem.Content
+    Set-ServerProperty $script:settingsPropsPath "pvp" (if ($pvpCheck.IsChecked) { "true" } else { "false" })
+    Set-ServerProperty $script:settingsPropsPath "white-list" (if ($whitelistCheck.IsChecked) { "true" } else { "false" })
+    Set-ServerProperty $script:settingsPropsPath "max-players" (ConvertTo-ClampedInt -Value $maxPlayersBox.Text -FallbackValue $curated["max-players"])
+    Set-ServerProperty $script:settingsPropsPath "motd" $motdBox.Text
+    Set-ServerProperty $script:settingsPropsPath "spawn-protection" (ConvertTo-ClampedInt -Value $spawnProtectionBox.Text -FallbackValue $curated["spawn-protection"])
+
+    Save-AdvancedPropertiesLines -Path $script:settingsPropsPath -Text $advancedBox.Text
+
+    $settingsHintText.Text = "Saved."
+    Enter-ServerSettingsScreen
+})
 
 $trashToggleButton.Add_Click({
     $script:showingTrash = -not $script:showingTrash
@@ -601,6 +682,12 @@ $mapsButton.Add_Click({
     if (-not $script:selected) { return }
     Enter-ManageMapsScreen
     Show-Screen "ManageMaps"
+})
+
+$settingsButton.Add_Click({
+    if (-not $script:selected) { return }
+    Enter-ServerSettingsScreen
+    Show-Screen "ServerSettings"
 })
 
 $consoleButton.Add_Click({
