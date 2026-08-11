@@ -29,6 +29,7 @@ if (Test-VerityModPresent -InstancePath $PSScriptRoot) {
                 & "Start-${service}Sidecar" -McRoot $mcRoot
             } catch {
                 Write-Warning "$service didn't come up ($_) - starting the server anyway; Verity will fall back to its configured cloud provider for that piece."
+                try { Set-VerityAiProvider -InstancePath $PSScriptRoot -Service $service -UseLocal $false } catch { }
             }
         }
     }
