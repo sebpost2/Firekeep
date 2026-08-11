@@ -112,6 +112,7 @@ $verityOllamaModelCombo = $homeRoot.FindName("VerityOllamaModelCombo")
 $script:aiJobs = @{ Ollama = $null; Kokoro = $null; Whisper = $null }
 
 $script:selected        = $null
+$script:syncingVerityCombos = $false
 $script:pendingStart    = $false
 $script:pendingStop     = $false
 $script:launchedProcess = $null  # the start-with-tunnel.ps1 wrapper process, for Cancel
@@ -263,8 +264,10 @@ $serverCombo.Add_SelectionChanged({
     $currentProvider = if ($script:selected.Game -eq "Minecraft" -and (Test-VerityModPresent -InstancePath $script:selected.Path)) {
         Get-VerityRemoteProvider -InstancePath $script:selected.Path
     } else { "" }
+    $script:syncingVerityCombos = $true
     $verityProviderCombo.SelectedItem = $verityProviderCombo.Items | Where-Object { $_.Content -eq $currentProvider } | Select-Object -First 1
     if ($verityOllamaModelCombo.Items.Count -gt 0) { $verityOllamaModelCombo.SelectedIndex = 0 }
+    $script:syncingVerityCombos = $false
     Sync-StatusDisplay | Out-Null
     Update-AddressDisplay
 })
@@ -360,6 +363,7 @@ $verityApiKeySaveButton.Add_Click({
 })
 
 $verityProviderCombo.Add_SelectionChanged({
+    if ($script:syncingVerityCombos) { return }
     if (-not $script:selected -or $verityProviderCombo.SelectedIndex -lt 0) { return }
     try {
         Set-VerityRemoteProvider -InstancePath $script:selected.Path -Provider $verityProviderCombo.SelectedItem.Content.ToString()
@@ -367,6 +371,7 @@ $verityProviderCombo.Add_SelectionChanged({
 })
 
 $verityOllamaModelCombo.Add_SelectionChanged({
+    if ($script:syncingVerityCombos) { return }
     if (-not $script:selected -or $verityOllamaModelCombo.SelectedIndex -lt 0) { return }
     try {
         Set-VerityOllamaModel -InstancePath $script:selected.Path -Model $verityOllamaModelCombo.SelectedItem.Content.ToString()

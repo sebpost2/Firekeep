@@ -137,7 +137,18 @@ function Set-VerityAiProvider {
     if ($isOldSchema) {
         switch ($Service) {
             "Ollama" {
-                $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.AISettings" -Key "aiProvider" -Value $(if ($UseLocal) { "OLLAMA" } else { "OPENAI" })
+                # On old schema, aiProvider doubles as the local/remote toggle
+                # (see Set-VerityRemoteProvider's comment). If the user already
+                # picked a real remote provider via the dropdown, flipping to
+                # remote here should keep it instead of clobbering it back to
+                # OPENAI - only fall back to OPENAI if there was no remote
+                # preference recorded (current value is still OLLAMA).
+                $remoteProvider = "OPENAI"
+                if (-not $UseLocal) {
+                    $currentProvider = Get-VerityRemoteProvider -InstancePath $InstancePath
+                    if ($currentProvider -and $currentProvider -ne "OLLAMA") { $remoteProvider = $currentProvider }
+                }
+                $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.AISettings" -Key "aiProvider" -Value $(if ($UseLocal) { "OLLAMA" } else { $remoteProvider })
                 $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.AISettings" -Key "aiEndpoint" -Value $(if ($UseLocal) { "http://127.0.0.1:11434/v1" } else { "" })
                 $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.AISettings" -Key "aiModel" -Value $(if ($UseLocal) { "timheinrich2011/verity-3b" } else { "" })
             }
@@ -187,11 +198,13 @@ function Set-VerityAiProvider {
 }
 
 # Sets which cloud provider AISettings.aiProvider points at when running
-# remote (not local Ollama). Independent of Set-VerityAiProvider's local/
-# remote toggle - this only changes which remote provider is selected;
-# toggling local Ollama on/off is still Set-VerityAiProvider's job. Values
-# are written uppercase, matching the mod's own convention exactly (no
-# case-translation layer needed).
+# remote (not local Ollama). On the new flat schema this is independent of
+# Set-VerityAiProvider's local/remote toggle (a separate use_ollama boolean
+# handles that). On the old schema, aiProvider IS the local/remote toggle -
+# there's no separate flag - so writing a remote provider here also
+# implicitly turns off local Ollama for that instance. Values are written
+# uppercase, matching the mod's own convention exactly (no case-translation
+# layer needed).
 function Set-VerityRemoteProvider {
     param(
         [Parameter(Mandatory = $true)][string]$InstancePath,
@@ -204,8 +217,17 @@ function Set-VerityRemoteProvider {
     }
 
     $lines = Get-Content -Path $tomlPath -Encoding utf8
-    $section = if (Test-VerityOldSchema -Content ($lines -join "`n") -InstancePath $InstancePath) { "GeneralSettings.AISettings" } else { "AISettings" }
+    $isOldSchema = Test-VerityOldSchema -Content ($lines -join "`n") -InstancePath $InstancePath
+    $section = if ($isOldSchema) { "GeneralSettings.AISettings" } else { "AISettings" }
     $lines = Set-TomlSectionValue -Lines $lines -Section $section -Key "aiProvider" -Value $Provider
+    if ($isOldSchema) {
+        # Old schema has no separate local/remote flag - aiEndpoint/aiModel
+        # are shared with the local Ollama sidecar config. Clear them so a
+        # switch to a remote provider doesn't leave a stale local endpoint
+        # (e.g. http://127.0.0.1:11434/v1) and Ollama model name behind.
+        $lines = Set-TomlSectionValue -Lines $lines -Section $section -Key "aiEndpoint" -Value ""
+        $lines = Set-TomlSectionValue -Lines $lines -Section $section -Key "aiModel" -Value ""
+    }
 
     $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
     [System.IO.File]::WriteAllLines($tomlPath, $lines, $utf8NoBom)

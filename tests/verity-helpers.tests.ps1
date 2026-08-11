@@ -321,6 +321,22 @@ Describe "Set-VerityRemoteProvider" {
         { Set-VerityRemoteProvider -InstancePath $inst -Provider "GEMINI" } | Should Throw
     }
 
+    It "clears a stale local Ollama endpoint when switching an old-schema instance to a remote provider" {
+        $inst = Join-Path $root "old-schema-local-endpoint"
+        New-Item -ItemType Directory -Force -Path (Join-Path $inst "config") | Out-Null
+        @'
+[GeneralSettings.AISettings]
+	apiKey = ""
+	aiProvider = "OLLAMA"
+	aiEndpoint = "http://127.0.0.1:11434/v1"
+	aiModel = "timheinrich2011/verity-3b"
+'@ | Set-Content -Path (Join-Path $inst "config\verity-common.toml") -Encoding utf8
+        Set-VerityRemoteProvider -InstancePath $inst -Provider "GROQ"
+        $content = Get-Content (Join-Path $inst "config\verity-common.toml") -Raw
+        $content | Should Not Match '127\.0\.0\.1'
+        $content | Should Match 'aiProvider = "GROQ"'
+    }
+
     Remove-Item -Recurse -Force $root -ErrorAction SilentlyContinue
 }
 
