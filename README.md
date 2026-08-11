@@ -201,14 +201,48 @@ several minutes depending on your internet — let it run.
 
 ---
 
-## Other games (down the road)
+## Scope
 
-The structure is already built for more games, not just Minecraft. When you
-want to add one (that has a dedicated server), a folder gets created next to
-`Minecraft\` following the same logic, and the app picks it up on its own.
-The playit.gg tunnel (`_shared\tools\playit`) is reused for all of them.
-Non-Minecraft games don't get the Console screen yet (it needs each game's
-log path and command protocol wired up first).
+This is built for **Minecraft only** right now, with no other games planned.
+The folder structure happens to be organized by game (`Minecraft\` sits next
+to where another game's folder would go), so it's technically extensible,
+but that's not an active roadmap item — just how it's laid out.
+
+---
+
+## Using your own port forwarding or a LAN address instead of playit.gg
+
+Don't want to use playit.gg — you've already forwarded a port on your
+router, or you only ever play with people on the same network? The
+**manual address box** on the main screen (next to the address card) always
+overrides playit.gg when it has something in it:
+
+- **Port forwarded?** Enter your public IP (or DNS name) and port there.
+- **LAN only?** Enter your local IP (e.g. `192.168.1.x:25565`) to force
+  same-network play and skip playit.gg entirely.
+- **Want playit.gg back?** Clear the box — it falls back to playit.gg
+  automatically, or to your LAN address if playit.gg isn't set up.
+
+---
+
+## Editing server settings after creation
+
+Click **Server Settings** on the main screen (server must be stopped) to
+change difficulty, PvP, whitelist, max players, MOTD, spawn protection, and
+max memory without hand-editing files. An **advanced** raw-text view covers
+anything else in `server.properties`. RCON settings are never shown here —
+they're managed by the app for its own use.
+
+---
+
+## Verity AI mod compatibility
+
+If a modpack includes the **Verity** mod (VerityWorld/VerityCraft packs),
+the app detects it automatically and shows an AI status panel on the main
+screen (Core LLM / Voice out / Voice in). You can run it fully **local**
+(free, downloads its own Ollama/Kokoro/Whisper sidecars on first use) or
+point it at a **remote** AI provider instead — both are configurable from
+the same panel, per server.
 
 ---
 
