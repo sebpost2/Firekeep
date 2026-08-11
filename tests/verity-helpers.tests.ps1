@@ -346,6 +346,53 @@ Describe "Get-VerityRemoteProvider" {
     Remove-Item -Recurse -Force $root -ErrorAction SilentlyContinue
 }
 
+Describe "Set-VerityOllamaModel" {
+
+    $root = Join-Path $env:TEMP ("verity-ollama-model-" + [Guid]::NewGuid().ToString("N"))
+
+    function New-FakeVerityInstance([string]$Path) {
+        New-Item -ItemType Directory -Force -Path (Join-Path $Path "config") | Out-Null
+        @'
+[AISettings]
+	use_ollama = true
+	ollama_ai_model = "old-model"
+'@ | Set-Content -Path (Join-Path $Path "config\verity-common.toml") -Encoding utf8
+    }
+
+    function New-FakeOldSchemaInstance([string]$Path) {
+        New-Item -ItemType Directory -Force -Path (Join-Path $Path "config") | Out-Null
+        @'
+[GeneralSettings.AISettings]
+	aiProvider = "OLLAMA"
+	aiModel = "old-model"
+'@ | Set-Content -Path (Join-Path $Path "config\verity-common.toml") -Encoding utf8
+    }
+
+    It "writes the selected model in the new flat schema" {
+        $inst = Join-Path $root "new-schema"
+        New-FakeVerityInstance -Path $inst
+        Set-VerityOllamaModel -InstancePath $inst -Model "timheinrich2011/verity-3b"
+        $content = Get-Content (Join-Path $inst "config\verity-common.toml") -Raw
+        $content | Should Match 'ollama_ai_model = "timheinrich2011/verity-3b"'
+    }
+
+    It "writes the selected model in the old nested schema" {
+        $inst = Join-Path $root "old-schema"
+        New-FakeOldSchemaInstance -Path $inst
+        Set-VerityOllamaModel -InstancePath $inst -Model "timheinrich2011/verity-3b"
+        $content = Get-Content (Join-Path $inst "config\verity-common.toml") -Raw
+        $content | Should Match 'aiModel = "timheinrich2011/verity-3b"'
+    }
+
+    It "throws a clear error when verity-common.toml doesn't exist" {
+        $inst = Join-Path $root "no-config"
+        New-Item -ItemType Directory -Force -Path $inst | Out-Null
+        { Set-VerityOllamaModel -InstancePath $inst -Model "timheinrich2011/verity-3b" } | Should Throw
+    }
+
+    Remove-Item -Recurse -Force $root -ErrorAction SilentlyContinue
+}
+
 Describe "Get-VerityRequiredSidecars" {
 
     $root = Join-Path $env:TEMP ("verity-required-" + [Guid]::NewGuid().ToString("N"))

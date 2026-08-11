@@ -229,6 +229,34 @@ function Get-VerityRemoteProvider {
     return ""
 }
 
+# Sets which Ollama model AISettings.aiModel/ollama_ai_model points at.
+# Independent of Set-VerityAiProvider's local/remote toggle - ships with
+# only one caller-supplied value today (the GUI's single-entry dropdown),
+# but the write path exists now so adding a second model later is a list
+# edit in HomeScreen.xaml, not new code here.
+function Set-VerityOllamaModel {
+    param(
+        [Parameter(Mandatory = $true)][string]$InstancePath,
+        [Parameter(Mandatory = $true)][string]$Model
+    )
+
+    $tomlPath = Join-Path $InstancePath "config\verity-common.toml"
+    if (-not (Test-Path $tomlPath)) {
+        throw "Could not find config\verity-common.toml under $InstancePath - is Verity actually installed on this server?"
+    }
+
+    $lines = Get-Content -Path $tomlPath -Encoding utf8
+    $isOldSchema = Test-VerityOldSchema -Content ($lines -join "`n") -InstancePath $InstancePath
+    if ($isOldSchema) {
+        $lines = Set-TomlSectionValue -Lines $lines -Section "GeneralSettings.AISettings" -Key "aiModel" -Value $Model
+    } else {
+        $lines = Set-TomlSectionValue -Lines $lines -Section "AISettings" -Key "ollama_ai_model" -Value $Model
+    }
+
+    $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+    [System.IO.File]::WriteAllLines($tomlPath, $lines, $utf8NoBom)
+}
+
 # Reads which of the 3 sidecars this server's config currently points at
 # locally - the toml IS the persisted on/off state, so this is the only
 # place that needs to know how to read it back out.

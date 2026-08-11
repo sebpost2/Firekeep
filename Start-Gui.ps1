@@ -108,6 +108,7 @@ $verityAiStopAllButton = $homeRoot.FindName("VerityAiStopAllButton")
 $verityApiKeyBox = $homeRoot.FindName("VerityApiKeyBox")
 $verityApiKeySaveButton = $homeRoot.FindName("VerityApiKeySaveButton")
 $verityProviderCombo = $homeRoot.FindName("VerityProviderCombo")
+$verityOllamaModelCombo = $homeRoot.FindName("VerityOllamaModelCombo")
 $script:aiJobs = @{ Ollama = $null; Kokoro = $null; Whisper = $null }
 
 $script:selected        = $null
@@ -263,6 +264,7 @@ $serverCombo.Add_SelectionChanged({
         Get-VerityRemoteProvider -InstancePath $script:selected.Path
     } else { "" }
     $verityProviderCombo.SelectedItem = $verityProviderCombo.Items | Where-Object { $_.Content -eq $currentProvider } | Select-Object -First 1
+    if ($verityOllamaModelCombo.Items.Count -gt 0) { $verityOllamaModelCombo.SelectedIndex = 0 }
     Sync-StatusDisplay | Out-Null
     Update-AddressDisplay
 })
@@ -361,6 +363,13 @@ $verityProviderCombo.Add_SelectionChanged({
     if (-not $script:selected -or $verityProviderCombo.SelectedIndex -lt 0) { return }
     try {
         Set-VerityRemoteProvider -InstancePath $script:selected.Path -Provider $verityProviderCombo.SelectedItem.Content.ToString()
+    } catch { }
+})
+
+$verityOllamaModelCombo.Add_SelectionChanged({
+    if (-not $script:selected -or $verityOllamaModelCombo.SelectedIndex -lt 0) { return }
+    try {
+        Set-VerityOllamaModel -InstancePath $script:selected.Path -Model $verityOllamaModelCombo.SelectedItem.Content.ToString()
     } catch { }
 })
 
