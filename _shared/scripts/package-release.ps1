@@ -2,7 +2,7 @@
 # _template, tests, docs) and leaves out any installed server (worlds, mods,
 # ops/whitelist, playit secrets, portable Java runtimes). Usage:
 #   .\package-release.ps1
-#   .\package-release.ps1 -OutputZip "C:\path\GameServers-release.zip"
+#   .\package-release.ps1 -OutputZip "C:\path\Firekeep-release.zip"
 
 param(
     [string]$Root = (Split-Path -Parent (Split-Path -Parent $PSScriptRoot)),
@@ -11,7 +11,7 @@ param(
     [switch]$TestOnlyLoadFunctions
 )
 
-if (-not $OutputZip) { $OutputZip = Join-Path $Root "GameServers-release.zip" }
+if (-not $OutputZip) { $OutputZip = Join-Path $Root "Firekeep-release.zip" }
 
 # Explicit allow-list of what DOES go in the public release. Everything else
 # (installed servers, secrets, Java runtimes) stays out by default, so adding

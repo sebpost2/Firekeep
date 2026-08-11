@@ -156,7 +156,7 @@ Describe "Get-ScreenSize" {
     It "returns the ServerSettings size" {
         $s = Get-ScreenSize -Screen "ServerSettings"
         $s.Width | Should Be 480
-        $s.Height | Should Be 640
+        $s.Height | Should Be 690
     }
 
     It "throws a clear error for an unrecognized screen" {

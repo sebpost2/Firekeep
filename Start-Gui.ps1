@@ -91,7 +91,6 @@ $fireIcon         = $homeRoot.FindName("FireVisual")
 $statusLabel      = $homeRoot.FindName("StatusLabel")
 $addressText      = $homeRoot.FindName("AddressText")
 $copyButton       = $homeRoot.FindName("CopyButton")
-$manualAddressRow = $homeRoot.FindName("ManualAddressRow")
 $manualAddressBox = $homeRoot.FindName("ManualAddressBox")
 $manualAddressSaveButton = $homeRoot.FindName("ManualAddressSaveButton")
 $actionButton     = $homeRoot.FindName("ActionButton")
@@ -175,9 +174,11 @@ function Get-SelectedServerPort {
     return 25565
 }
 
-# Reads the shareable address, in priority order: a saved manual override,
-# then playit.gg (ask once, fall back to the cached address.txt if that
-# fails - same as show-address.ps1), then this machine's LAN IP.
+# Reads the shareable address, in priority order: a saved manual override
+# (always visible/editable, so a port-forwarded IP or a forced LAN address
+# can override playit.gg at any time), then playit.gg (ask once, fall back
+# to the cached address.txt if that fails - same as show-address.ps1), then
+# this machine's LAN IP.
 function Update-AddressDisplay {
     $toolDir = Join-Path $root "_shared\tools\playit"
     $secretFile = Join-Path $toolDir "secret.key"
@@ -214,7 +215,6 @@ function Update-AddressDisplay {
     }
 
     $setupTunnelButton.Visibility = if ($addr -or $manual) { "Collapsed" } else { "Visible" }
-    $manualAddressRow.Visibility = if ($addr) { "Collapsed" } else { "Visible" }
 }
 
 # Refreshes the campfire/status/button display from real port state, and
@@ -312,7 +312,7 @@ $actionButton.Add_Click({
         $script:pendingStart = $true
         $actionButton.Content = "CANCEL"
         $homeHintText.Text = "Lighting it up..."
-        $script:launchedProcess = Start-Process -FilePath "powershell.exe" -PassThru -ArgumentList @(
+        $script:launchedProcess = Start-Process -FilePath "powershell.exe" -WindowStyle Hidden -PassThru -ArgumentList @(
             "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
             "`"$(Join-Path $script:selected.Path 'start-with-tunnel.ps1')`""
         )
@@ -431,6 +431,7 @@ $whitelistCheck          = $settingsRoot.FindName("WhitelistCheck")
 $maxPlayersBox           = $settingsRoot.FindName("MaxPlayersBox")
 $motdBox                 = $settingsRoot.FindName("MotdBox")
 $spawnProtectionBox      = $settingsRoot.FindName("SpawnProtectionBox")
+$maxRamBox               = $settingsRoot.FindName("MaxRamBox")
 $advancedToggleButton    = $settingsRoot.FindName("AdvancedToggleButton")
 $advancedBox             = $settingsRoot.FindName("AdvancedBox")
 $advancedHintText        = $settingsRoot.FindName("AdvancedHintText")
@@ -532,6 +533,9 @@ function Enter-ServerSettingsScreen {
     $motdBox.Text = $curated["motd"]
     $spawnProtectionBox.Text = $curated["spawn-protection"]
 
+    $script:settingsConfigPath = Join-Path $script:selected.Path "run.config.ps1"
+    $maxRamBox.Text = Get-RunConfigMaxRam -Path $script:settingsConfigPath
+
     $advancedBox.Text = Get-AdvancedPropertiesText -Path $script:settingsPropsPath
     $advancedBox.Visibility = "Collapsed"
     $advancedHintText.Visibility = "Collapsed"
@@ -574,6 +578,10 @@ $saveSettingsButton.Add_Click({
     Set-ServerProperty $script:settingsPropsPath "max-players" (ConvertTo-ClampedInt -Value $maxPlayersBox.Text -FallbackValue $curated["max-players"])
     Set-ServerProperty $script:settingsPropsPath "motd" $motdBox.Text
     Set-ServerProperty $script:settingsPropsPath "spawn-protection" (ConvertTo-ClampedInt -Value $spawnProtectionBox.Text -FallbackValue $curated["spawn-protection"])
+
+    $maxRam = $maxRamBox.Text.Trim()
+    if (-not $maxRam) { $maxRam = Get-RunConfigMaxRam -Path $script:settingsConfigPath }
+    Set-RunConfigMaxRam -Path $script:settingsConfigPath -MaxRam $maxRam
 
     Save-AdvancedPropertiesLines -Path $script:settingsPropsPath -Text $advancedBox.Text
 

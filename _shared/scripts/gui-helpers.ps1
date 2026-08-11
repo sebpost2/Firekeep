@@ -89,7 +89,7 @@ function Get-ScreenSize {
         "ManageMaps"     { return [PSCustomObject]@{ Width = 480; Height = 640 } }
         "AddServer"      { return [PSCustomObject]@{ Width = 480; Height = 580 } }
         "Console"        { return [PSCustomObject]@{ Width = 640; Height = 720 } }
-        "ServerSettings" { return [PSCustomObject]@{ Width = 480; Height = 640 } }
+        "ServerSettings" { return [PSCustomObject]@{ Width = 480; Height = 690 } }
         default { throw "Unrecognized screen '$Screen'." }
     }
 }

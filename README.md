@@ -1,4 +1,4 @@
-# Game Servers — Quick Guide
+# Firekeep — Quick Guide
 
 This folder lets you run game servers on your own PC, using **playit.gg** so
 people can connect without opening ports on your router.
@@ -215,7 +215,7 @@ log path and command protocol wired up first).
 ## How it's organized
 
 ```text
-GameServers\
+Firekeep\
   Start.bat                     <- double-click this to open the app
   Start-Gui.ps1                 <- the app itself (Start.bat launches it)
   _shared\

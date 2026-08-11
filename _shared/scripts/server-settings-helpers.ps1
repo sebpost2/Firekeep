@@ -1,8 +1,8 @@
 # Pure logic behind the Server Settings screen (Start-Gui.ps1). Reads go
 # through Read-ServerProperties (rcon.ps1); writes go through the existing
-# Set-ServerProperty (worlds-helpers.ps1) - this file adds no new
-# server.properties I/O of its own, only the curated-field/defaults/
-# protection logic layered on top. Loaded via dot-source.
+# Set-ServerProperty (worlds-helpers.ps1) for server.properties, and the
+# Get/Set-RunConfigMaxRam functions below for run.config.ps1's $MaxRam.
+# Loaded via dot-source.
 
 # Minecraft's own hard-coded defaults for the curated fields, used to
 # pre-fill the form when a brand-new server's server.properties doesn't
@@ -93,4 +93,31 @@ function Save-AdvancedPropertiesLines {
         if ($skip -contains $key) { continue }
         Set-ServerProperty $Path $key $val
     }
+}
+
+# Reads $MaxRam out of a server's run.config.ps1 via regex rather than
+# dot-sourcing it, since that file also sets $ServerJar/$UseModpackLauncher
+# and executing it just to read one value would be needless (and risky if
+# the file ever grows side effects).
+function Get-RunConfigMaxRam {
+    param([Parameter(Mandatory = $true)][string]$Path)
+    if (-not (Test-Path $Path)) { return "6G" }
+    $content = Get-Content -Path $Path -Raw
+    if ($content -match '\$MaxRam\s*=\s*"([^"]*)"') { return $Matches[1] }
+    return "6G"
+}
+
+# Writes $MaxRam back into run.config.ps1 in place, same approach
+# AddServerScreen's Set-RunConfigJavaAndRam (mrpack-helpers.ps1) uses for
+# the creation flow - a straight regex substitution, everything else in
+# the file untouched.
+function Set-RunConfigMaxRam {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][string]$MaxRam
+    )
+    $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+    $content = [System.IO.File]::ReadAllText($Path, $utf8NoBom)
+    $content = $content -replace '\$MaxRam\s*=\s*"[^"]*"', "`$MaxRam = `"$MaxRam`""
+    [System.IO.File]::WriteAllText($Path, $content, $utf8NoBom)
 }

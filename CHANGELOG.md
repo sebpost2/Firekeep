@@ -23,6 +23,22 @@ First tracked release.
 - In-app version label on the Home screen, sourced from the `VERSION` file.
 - "Server Settings" screen (Home screen button) for editing a server's
   `server.properties` - curated controls for difficulty, PvP, whitelist,
-  max players, MOTD, and spawn protection, plus an advanced raw-text view
-  for anything else in the file. RCON settings are never shown/editable.
-  Requires the server to be stopped.
+  max players, MOTD, spawn protection, and max memory (`run.config.ps1`'s
+  `$MaxRam`), plus an advanced raw-text view for anything else in the file.
+  RCON settings are never shown/editable. Requires the server to be stopped.
+
+### Changed
+
+- Project renamed from "Game Servers" to **Firekeep** ahead of the public
+  GitHub release (app window title, README, release-zip naming).
+
+### Fixed
+
+- Advanced Server Settings text box could grow past the visible window with
+  no scrollbar, hiding everything below it.
+- Starting a server popped up a bare PowerShell console window; it now
+  launches hidden, matching how Stop Server already runs.
+- The manual-address box on the Home screen was hidden once playit.gg
+  produced an address, leaving no way to override it with a port-forwarded
+  IP or force LAN-only. It's now always visible - fill it in to override,
+  clear it to go back to playit.gg/auto.

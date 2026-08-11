@@ -99,3 +99,33 @@ Describe "Get-AdvancedPropertiesText / Save-AdvancedPropertiesLines" {
 
     Remove-Item -Path $propsPath, "$propsPath.bak" -Force -ErrorAction SilentlyContinue
 }
+
+Describe "Get-RunConfigMaxRam / Set-RunConfigMaxRam" {
+    $configPath = Join-Path $env:TEMP ("run-config-" + [Guid]::NewGuid().ToString("N") + ".ps1")
+
+    BeforeEach {
+        @(
+            '$JavaVersion = 21'
+            '$MinRam = "2G"'
+            '$MaxRam = "6G"'
+            '$ServerJar = "server.jar"'
+        ) -join "`r`n" | Set-Content -Path $configPath -Encoding ascii
+    }
+
+    It "reads the current MaxRam value" {
+        Get-RunConfigMaxRam -Path $configPath | Should Be "6G"
+    }
+
+    It "returns 6G for a missing file" {
+        Get-RunConfigMaxRam -Path (Join-Path $env:TEMP "no-such-config.ps1") | Should Be "6G"
+    }
+
+    It "writes a new MaxRam value, leaving the rest of the file untouched" {
+        Set-RunConfigMaxRam -Path $configPath -MaxRam "8G"
+        Get-RunConfigMaxRam -Path $configPath | Should Be "8G"
+        (Get-Content -Path $configPath -Raw) | Should Match '\$JavaVersion = 21'
+        (Get-Content -Path $configPath -Raw) | Should Match '\$MinRam = "2G"'
+    }
+
+    Remove-Item -Path $configPath -Force -ErrorAction SilentlyContinue
+}

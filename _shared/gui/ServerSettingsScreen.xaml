@@ -16,6 +16,8 @@
         <RowDefinition Height="Auto"/>
         <RowDefinition Height="Auto"/>
         <RowDefinition Height="Auto"/>
+        <RowDefinition Height="Auto"/>
+        <RowDefinition Height="Auto"/>
         <RowDefinition Height="*"/>
         <RowDefinition Height="Auto"/>
         <RowDefinition Height="Auto"/>
@@ -57,21 +59,28 @@
     <TextBlock Grid.Row="9" Text="Spawn protection radius" Style="{StaticResource LabelStyle}"/>
     <TextBox Grid.Row="10" x:Name="SpawnProtectionBox"/>
 
-    <Button Grid.Row="11" x:Name="AdvancedToggleButton" Content="Show advanced settings"
+    <TextBlock Grid.Row="11" Text="Max memory (e.g. 6G)" Style="{StaticResource LabelStyle}"/>
+    <TextBox Grid.Row="12" x:Name="MaxRamBox"/>
+
+    <Button Grid.Row="13" x:Name="AdvancedToggleButton" Content="Show advanced settings"
             Style="{StaticResource LinkButtonStyle}" HorizontalAlignment="Left" Margin="0,16,0,0"/>
-    <StackPanel Grid.Row="12">
-        <TextBlock x:Name="AdvancedHintText" Visibility="Collapsed"
+    <Grid Grid.Row="14">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+        <TextBlock Grid.Row="0" x:Name="AdvancedHintText" Visibility="Collapsed"
                    Text="Edits and new lines are saved. Removing a line here won't delete that setting from the file."
                    Foreground="{StaticResource MutedTextBrush}" FontFamily="Segoe UI" FontSize="12"
                    Margin="0,8,0,4" TextWrapping="Wrap"/>
-        <TextBox x:Name="AdvancedBox" Visibility="Collapsed"
+        <TextBox Grid.Row="1" x:Name="AdvancedBox" Visibility="Collapsed"
                  FontFamily="Consolas" FontSize="12" AcceptsReturn="True" TextWrapping="NoWrap"
                  VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
                  MinHeight="120"/>
-    </StackPanel>
+    </Grid>
 
-    <TextBlock Grid.Row="13" x:Name="HintText" Text=" " Foreground="{StaticResource MutedTextBrush}"
+    <TextBlock Grid.Row="15" x:Name="HintText" Text=" " Foreground="{StaticResource MutedTextBrush}"
                FontFamily="Segoe UI" FontSize="12" Margin="0,14,0,14" TextWrapping="Wrap"/>
 
-    <Button Grid.Row="14" x:Name="SaveButton" Content="SAVE" Style="{StaticResource ActionButtonStyle}"/>
+    <Button Grid.Row="16" x:Name="SaveButton" Content="SAVE" Style="{StaticResource ActionButtonStyle}"/>
 </Grid>
