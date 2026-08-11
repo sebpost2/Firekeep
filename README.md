@@ -8,6 +8,12 @@ Minecraft only.
 It's all **free** (Adoptium Java + playit.gg) and you don't need to install
 anything by hand: Java downloads itself the first time it's needed.
 
+## Download
+
+Grab the latest zip from the
+**[Releases page](https://github.com/sebpost2/Firekeep/releases/latest)**,
+extract it anywhere, and double-click `Start.bat`.
+
 ## Requirements
 
 - Windows.
