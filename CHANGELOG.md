@@ -21,3 +21,8 @@ First tracked release.
 - `tests/fresh-install.tests.ps1` - headless regression test guarding the
   clean-machine install/launch path.
 - In-app version label on the Home screen, sourced from the `VERSION` file.
+- "Server Settings" screen (Home screen button) for editing a server's
+  `server.properties` - curated controls for difficulty, PvP, whitelist,
+  max players, MOTD, and spawn protection, plus an advanced raw-text view
+  for anything else in the file. RCON settings are never shown/editable.
+  Requires the server to be stopped.
