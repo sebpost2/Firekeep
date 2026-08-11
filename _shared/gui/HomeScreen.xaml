@@ -132,6 +132,12 @@
                 <TextBlock Text="Manage Maps"/>
             </StackPanel>
         </Button>
+        <Button x:Name="SettingsButton" Style="{StaticResource LinkButtonStyle}">
+            <StackPanel Orientation="Horizontal">
+                <TextBlock Text="&#xE713;" Style="{StaticResource IconGlyphStyle}"/>
+                <TextBlock Text="Server Settings"/>
+            </StackPanel>
+        </Button>
         <Button x:Name="ConsoleButton" Style="{StaticResource LinkButtonStyle}">
             <StackPanel Orientation="Horizontal">
                 <TextBlock Text="&#xE756;" Style="{StaticResource IconGlyphStyle}"/>
