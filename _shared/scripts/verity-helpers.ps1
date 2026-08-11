@@ -186,6 +186,49 @@ function Set-VerityAiProvider {
     [System.IO.File]::WriteAllLines($tomlPath, $lines, $utf8NoBom)
 }
 
+# Sets which cloud provider AISettings.aiProvider points at when running
+# remote (not local Ollama). Independent of Set-VerityAiProvider's local/
+# remote toggle - this only changes which remote provider is selected;
+# toggling local Ollama on/off is still Set-VerityAiProvider's job. Values
+# are written uppercase, matching the mod's own convention exactly (no
+# case-translation layer needed).
+function Set-VerityRemoteProvider {
+    param(
+        [Parameter(Mandatory = $true)][string]$InstancePath,
+        [Parameter(Mandatory = $true)][ValidateSet("GEMINI", "GROQ", "OPENROUTER", "MISTRAL", "OPENAI")][string]$Provider
+    )
+
+    $tomlPath = Join-Path $InstancePath "config\verity-common.toml"
+    if (-not (Test-Path $tomlPath)) {
+        throw "Could not find config\verity-common.toml under $InstancePath - is Verity actually installed on this server?"
+    }
+
+    $lines = Get-Content -Path $tomlPath -Encoding utf8
+    $section = if (Test-VerityOldSchema -Content ($lines -join "`n") -InstancePath $InstancePath) { "GeneralSettings.AISettings" } else { "AISettings" }
+    $lines = Set-TomlSectionValue -Lines $lines -Section $section -Key "aiProvider" -Value $Provider
+
+    $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+    [System.IO.File]::WriteAllLines($tomlPath, $lines, $utf8NoBom)
+}
+
+# Reads the currently saved aiProvider value (e.g. "GROQ", or "OLLAMA" if
+# local is on, or "" if unset/missing config) - used to pre-fill the GUI's
+# provider dropdown so it reflects what's actually saved, the same role
+# Get-VerityApiKey plays for the API key field.
+function Get-VerityRemoteProvider {
+    param(
+        [Parameter(Mandatory = $true)][string]$InstancePath
+    )
+    $tomlPath = Join-Path $InstancePath "config\verity-common.toml"
+    if (-not (Test-Path $tomlPath)) { return "" }
+
+    $content = Get-Content -Path $tomlPath -Raw
+    if ($content -match '(?m)^\s*aiProvider\s*=\s*"([^"]*)"') {
+        return $Matches[1]
+    }
+    return ""
+}
+
 # Reads which of the 3 sidecars this server's config currently points at
 # locally - the toml IS the persisted on/off state, so this is the only
 # place that needs to know how to read it back out.

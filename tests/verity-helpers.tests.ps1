@@ -277,6 +277,75 @@ Describe "Set-VerityAiProvider" {
     Remove-Item -Recurse -Force $root -ErrorAction SilentlyContinue
 }
 
+Describe "Set-VerityRemoteProvider" {
+
+    $root = Join-Path $env:TEMP ("verity-remote-provider-" + [Guid]::NewGuid().ToString("N"))
+
+    function New-FakeVerityInstance([string]$Path) {
+        New-Item -ItemType Directory -Force -Path (Join-Path $Path "config") | Out-Null
+        @'
+[AISettings]
+	apiKey = ""
+	aiProvider = "OPENAI"
+'@ | Set-Content -Path (Join-Path $Path "config\verity-common.toml") -Encoding utf8
+    }
+
+    function New-FakeOldSchemaInstance([string]$Path) {
+        New-Item -ItemType Directory -Force -Path (Join-Path $Path "config") | Out-Null
+        @'
+[GeneralSettings.AISettings]
+	apiKey = ""
+	aiProvider = "OPENAI"
+'@ | Set-Content -Path (Join-Path $Path "config\verity-common.toml") -Encoding utf8
+    }
+
+    It "writes the selected provider in the new flat schema" {
+        $inst = Join-Path $root "new-schema"
+        New-FakeVerityInstance -Path $inst
+        Set-VerityRemoteProvider -InstancePath $inst -Provider "GROQ"
+        $content = Get-Content (Join-Path $inst "config\verity-common.toml") -Raw
+        $content | Should Match 'aiProvider = "GROQ"'
+    }
+
+    It "writes the selected provider in the old nested schema" {
+        $inst = Join-Path $root "old-schema"
+        New-FakeOldSchemaInstance -Path $inst
+        Set-VerityRemoteProvider -InstancePath $inst -Provider "OPENROUTER"
+        $content = Get-Content (Join-Path $inst "config\verity-common.toml") -Raw
+        $content | Should Match 'aiProvider = "OPENROUTER"'
+    }
+
+    It "throws a clear error when verity-common.toml doesn't exist" {
+        $inst = Join-Path $root "no-config"
+        New-Item -ItemType Directory -Force -Path $inst | Out-Null
+        { Set-VerityRemoteProvider -InstancePath $inst -Provider "GEMINI" } | Should Throw
+    }
+
+    Remove-Item -Recurse -Force $root -ErrorAction SilentlyContinue
+}
+
+Describe "Get-VerityRemoteProvider" {
+
+    $root = Join-Path $env:TEMP ("verity-get-provider-" + [Guid]::NewGuid().ToString("N"))
+
+    It "returns the saved provider" {
+        $inst = Join-Path $root "has-provider"
+        New-Item -ItemType Directory -Force -Path (Join-Path $inst "config") | Out-Null
+        @'
+[AISettings]
+	aiProvider = "MISTRAL"
+'@ | Set-Content -Path (Join-Path $inst "config\verity-common.toml") -Encoding utf8
+        Get-VerityRemoteProvider -InstancePath $inst | Should Be "MISTRAL"
+    }
+
+    It "returns an empty string when the config file doesn't exist" {
+        $inst = Join-Path $root "no-config"
+        Get-VerityRemoteProvider -InstancePath $inst | Should Be ""
+    }
+
+    Remove-Item -Recurse -Force $root -ErrorAction SilentlyContinue
+}
+
 Describe "Get-VerityRequiredSidecars" {
 
     $root = Join-Path $env:TEMP ("verity-required-" + [Guid]::NewGuid().ToString("N"))

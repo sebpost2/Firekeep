@@ -166,6 +166,7 @@
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
             <TextBlock Grid.Row="0" Text="LOCAL AI · VERITY" Foreground="{StaticResource MutedTextBrush}"
@@ -220,7 +221,25 @@
                         Foreground="{StaticResource AccentBrush}" Margin="8,0,0,0"/>
             </Grid>
 
-            <Button Grid.Row="4" x:Name="VerityAiStopAllButton" Content="STOP ALL" Style="{StaticResource LinkButtonStyle}"
+            <Grid Grid.Row="4" Margin="0,0,0,12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="REMOTE PROVIDER" Foreground="{StaticResource MutedTextBrush}"
+                           FontFamily="Segoe UI Semibold" FontSize="11" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                <ComboBox Grid.Column="1" x:Name="VerityProviderCombo" FontFamily="Segoe UI" FontSize="12"
+                          Background="{StaticResource PanelElevatedBrush}" Foreground="{StaticResource TextBrush}"
+                          BorderBrush="{StaticResource BorderSubtleBrush}" BorderThickness="1" Padding="6,4">
+                    <ComboBoxItem Content="GEMINI"/>
+                    <ComboBoxItem Content="GROQ"/>
+                    <ComboBoxItem Content="OPENROUTER"/>
+                    <ComboBoxItem Content="MISTRAL"/>
+                    <ComboBoxItem Content="OPENAI"/>
+                </ComboBox>
+            </Grid>
+
+            <Button Grid.Row="5" x:Name="VerityAiStopAllButton" Content="STOP ALL" Style="{StaticResource LinkButtonStyle}"
                     Foreground="{StaticResource MutedTextBrush}" HorizontalAlignment="Right"/>
         </Grid>
     </Border>

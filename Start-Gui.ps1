@@ -107,6 +107,7 @@ $verityServices = @(
 $verityAiStopAllButton = $homeRoot.FindName("VerityAiStopAllButton")
 $verityApiKeyBox = $homeRoot.FindName("VerityApiKeyBox")
 $verityApiKeySaveButton = $homeRoot.FindName("VerityApiKeySaveButton")
+$verityProviderCombo = $homeRoot.FindName("VerityProviderCombo")
 $script:aiJobs = @{ Ollama = $null; Kokoro = $null; Whisper = $null }
 
 $script:selected        = $null
@@ -258,6 +259,10 @@ $serverCombo.Add_SelectionChanged({
     $verityApiKeyBox.Password = if ($script:selected.Game -eq "Minecraft" -and (Test-VerityModPresent -InstancePath $script:selected.Path)) {
         Get-VerityApiKey -InstancePath $script:selected.Path
     } else { "" }
+    $currentProvider = if ($script:selected.Game -eq "Minecraft" -and (Test-VerityModPresent -InstancePath $script:selected.Path)) {
+        Get-VerityRemoteProvider -InstancePath $script:selected.Path
+    } else { "" }
+    $verityProviderCombo.SelectedItem = $verityProviderCombo.Items | Where-Object { $_.Content -eq $currentProvider } | Select-Object -First 1
     Sync-StatusDisplay | Out-Null
     Update-AddressDisplay
 })
@@ -350,6 +355,13 @@ $verityApiKeySaveButton.Add_Click({
     } catch {
         $verityApiKeySaveButton.Content = "FAILED"
     }
+})
+
+$verityProviderCombo.Add_SelectionChanged({
+    if (-not $script:selected -or $verityProviderCombo.SelectedIndex -lt 0) { return }
+    try {
+        Set-VerityRemoteProvider -InstancePath $script:selected.Path -Provider $verityProviderCombo.SelectedItem.Content.ToString()
+    } catch { }
 })
 
 $verityApiKeyBox.Add_PasswordChanged({ $verityApiKeySaveButton.Content = "SAVE" })
