@@ -59,10 +59,16 @@
 
     <Button Grid.Row="11" x:Name="AdvancedToggleButton" Content="Show advanced settings"
             Style="{StaticResource LinkButtonStyle}" HorizontalAlignment="Left" Margin="0,16,0,0"/>
-    <TextBox Grid.Row="12" x:Name="AdvancedBox" Visibility="Collapsed"
-             FontFamily="Consolas" FontSize="12" AcceptsReturn="True" TextWrapping="NoWrap"
-             VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
-             MinHeight="120" Margin="0,8,0,0"/>
+    <StackPanel Grid.Row="12">
+        <TextBlock x:Name="AdvancedHintText" Visibility="Collapsed"
+                   Text="Edits and new lines are saved. Removing a line here won't delete that setting from the file."
+                   Foreground="{StaticResource MutedTextBrush}" FontFamily="Segoe UI" FontSize="12"
+                   Margin="0,8,0,4" TextWrapping="Wrap"/>
+        <TextBox x:Name="AdvancedBox" Visibility="Collapsed"
+                 FontFamily="Consolas" FontSize="12" AcceptsReturn="True" TextWrapping="NoWrap"
+                 VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
+                 MinHeight="120"/>
+    </StackPanel>
 
     <TextBlock Grid.Row="13" x:Name="HintText" Text=" " Foreground="{StaticResource MutedTextBrush}"
                FontFamily="Segoe UI" FontSize="12" Margin="0,14,0,14" TextWrapping="Wrap"/>

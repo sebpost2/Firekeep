@@ -433,6 +433,7 @@ $motdBox                 = $settingsRoot.FindName("MotdBox")
 $spawnProtectionBox      = $settingsRoot.FindName("SpawnProtectionBox")
 $advancedToggleButton    = $settingsRoot.FindName("AdvancedToggleButton")
 $advancedBox             = $settingsRoot.FindName("AdvancedBox")
+$advancedHintText        = $settingsRoot.FindName("AdvancedHintText")
 $settingsHintText        = $settingsRoot.FindName("HintText")
 $saveSettingsButton      = $settingsRoot.FindName("SaveButton")
 
@@ -533,6 +534,7 @@ function Enter-ServerSettingsScreen {
 
     $advancedBox.Text = Get-AdvancedPropertiesText -Path $script:settingsPropsPath
     $advancedBox.Visibility = "Collapsed"
+    $advancedHintText.Visibility = "Collapsed"
     $advancedToggleButton.Content = "Show advanced settings"
 
     if (Test-PortOpen -Port (Get-SelectedRconPort)) {
@@ -547,9 +549,11 @@ $settingsBackButton.Add_Click({ Show-Screen "Home" })
 $advancedToggleButton.Add_Click({
     if ($advancedBox.Visibility -eq "Visible") {
         $advancedBox.Visibility = "Collapsed"
+        $advancedHintText.Visibility = "Collapsed"
         $advancedToggleButton.Content = "Show advanced settings"
     } else {
         $advancedBox.Visibility = "Visible"
+        $advancedHintText.Visibility = "Visible"
         $advancedToggleButton.Content = "Hide advanced settings"
     }
 })
@@ -563,9 +567,10 @@ $saveSettingsButton.Add_Click({
     $props = Read-ServerProperties $script:settingsPropsPath
     $curated = Get-CuratedPropertyValues -Props $props
 
-    Set-ServerProperty $script:settingsPropsPath "difficulty" $difficultyCombo.SelectedItem.Content
-    Set-ServerProperty $script:settingsPropsPath "pvp" (if ($pvpCheck.IsChecked) { "true" } else { "false" })
-    Set-ServerProperty $script:settingsPropsPath "white-list" (if ($whitelistCheck.IsChecked) { "true" } else { "false" })
+    $difficulty = if ($difficultyCombo.SelectedItem) { $difficultyCombo.SelectedItem.Content } else { $curated["difficulty"] }
+    Set-ServerProperty $script:settingsPropsPath "difficulty" $difficulty
+    Set-ServerProperty $script:settingsPropsPath "pvp" $(if ($pvpCheck.IsChecked) { "true" } else { "false" })
+    Set-ServerProperty $script:settingsPropsPath "white-list" $(if ($whitelistCheck.IsChecked) { "true" } else { "false" })
     Set-ServerProperty $script:settingsPropsPath "max-players" (ConvertTo-ClampedInt -Value $maxPlayersBox.Text -FallbackValue $curated["max-players"])
     Set-ServerProperty $script:settingsPropsPath "motd" $motdBox.Text
     Set-ServerProperty $script:settingsPropsPath "spawn-protection" (ConvertTo-ClampedInt -Value $spawnProtectionBox.Text -FallbackValue $curated["spawn-protection"])
