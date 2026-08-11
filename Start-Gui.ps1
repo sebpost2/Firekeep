@@ -572,8 +572,8 @@ $saveSettingsButton.Add_Click({
 
     Save-AdvancedPropertiesLines -Path $script:settingsPropsPath -Text $advancedBox.Text
 
-    $settingsHintText.Text = "Saved."
     Enter-ServerSettingsScreen
+    $settingsHintText.Text = "Saved."
 })
 
 $trashToggleButton.Add_Click({
