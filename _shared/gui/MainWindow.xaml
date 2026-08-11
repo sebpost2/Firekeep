@@ -17,6 +17,7 @@
         <ContentControl x:Name="MapsHost" Focusable="False" Visibility="Collapsed"/>
         <ContentControl x:Name="AddServerHost" Focusable="False" Visibility="Collapsed"/>
         <ContentControl x:Name="ConsoleHost" Focusable="False" Visibility="Collapsed"/>
+        <ContentControl x:Name="SettingsHost" Focusable="False" Visibility="Collapsed"/>
         <ContentControl x:Name="OverlayHost" Focusable="False" Visibility="Collapsed" Panel.ZIndex="10"/>
     </Grid>
 </Window>

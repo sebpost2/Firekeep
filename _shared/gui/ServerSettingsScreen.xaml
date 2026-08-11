@@ -1,0 +1,71 @@
+<Grid
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Margin="28">
+
+    <Grid.RowDefinitions>
+        <RowDefinition Height="Auto"/>
+        <RowDefinition Height="Auto"/>
+        <RowDefinition Height="Auto"/>
+        <RowDefinition Height="Auto"/>
+        <RowDefinition Height="Auto"/>
+        <RowDefinition Height="Auto"/>
+        <RowDefinition Height="Auto"/>
+        <RowDefinition Height="Auto"/>
+        <RowDefinition Height="Auto"/>
+        <RowDefinition Height="Auto"/>
+        <RowDefinition Height="Auto"/>
+        <RowDefinition Height="Auto"/>
+        <RowDefinition Height="*"/>
+        <RowDefinition Height="Auto"/>
+        <RowDefinition Height="Auto"/>
+    </Grid.RowDefinitions>
+
+    <Grid Grid.Row="0">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+        <Button Grid.Column="0" x:Name="BackButton" Content="&#xE72B;" Style="{StaticResource BackButtonStyle}" Margin="0,0,8,0"/>
+        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+            <TextBlock Text="SERVER SETTINGS" Foreground="{StaticResource TextBrush}"
+                       FontFamily="Segoe UI Black" FontSize="22"/>
+            <TextBlock x:Name="SubtitleText" Text="" Foreground="{StaticResource MutedTextBrush}"
+                       FontFamily="Segoe UI" FontSize="12" Margin="0,4,0,0"/>
+        </StackPanel>
+    </Grid>
+
+    <TextBlock Grid.Row="1" Text="Difficulty" Style="{StaticResource LabelStyle}"/>
+    <ComboBox Grid.Row="2" x:Name="DifficultyCombo">
+        <ComboBoxItem Content="peaceful"/>
+        <ComboBoxItem Content="easy"/>
+        <ComboBoxItem Content="normal"/>
+        <ComboBoxItem Content="hard"/>
+    </ComboBox>
+
+    <CheckBox Grid.Row="3" x:Name="PvpCheck" Content="Allow PvP" Margin="0,14,0,0"
+              Foreground="{StaticResource TextBrush}" FontFamily="Segoe UI" FontSize="12"/>
+    <CheckBox Grid.Row="4" x:Name="WhitelistCheck" Content="Whitelist only" Margin="0,10,0,0"
+              Foreground="{StaticResource TextBrush}" FontFamily="Segoe UI" FontSize="12"/>
+
+    <TextBlock Grid.Row="5" Text="Max players" Style="{StaticResource LabelStyle}" Margin="0,14,0,0"/>
+    <TextBox Grid.Row="6" x:Name="MaxPlayersBox"/>
+
+    <TextBlock Grid.Row="7" Text="Server name (MOTD)" Style="{StaticResource LabelStyle}"/>
+    <TextBox Grid.Row="8" x:Name="MotdBox"/>
+
+    <TextBlock Grid.Row="9" Text="Spawn protection radius" Style="{StaticResource LabelStyle}"/>
+    <TextBox Grid.Row="10" x:Name="SpawnProtectionBox"/>
+
+    <Button Grid.Row="11" x:Name="AdvancedToggleButton" Content="Show advanced settings"
+            Style="{StaticResource LinkButtonStyle}" HorizontalAlignment="Left" Margin="0,16,0,0"/>
+    <TextBox Grid.Row="12" x:Name="AdvancedBox" Visibility="Collapsed"
+             FontFamily="Consolas" FontSize="12" AcceptsReturn="True" TextWrapping="NoWrap"
+             VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
+             MinHeight="120" Margin="0,8,0,0"/>
+
+    <TextBlock Grid.Row="13" x:Name="HintText" Text=" " Foreground="{StaticResource MutedTextBrush}"
+               FontFamily="Segoe UI" FontSize="12" Margin="0,14,0,14" TextWrapping="Wrap"/>
+
+    <Button Grid.Row="14" x:Name="SaveButton" Content="SAVE" Style="{StaticResource ActionButtonStyle}"/>
+</Grid>

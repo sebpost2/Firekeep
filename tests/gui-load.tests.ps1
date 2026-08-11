@@ -22,6 +22,7 @@ $screenFiles = @(
     "MainWindow.xaml",
     "HomeScreen.xaml",
     "ManageMapsScreen.xaml",
+    "ServerSettingsScreen.xaml",
     "AddServerScreen.xaml",
     "ConsoleScreen.xaml",
     "PromptOverlay.xaml"
