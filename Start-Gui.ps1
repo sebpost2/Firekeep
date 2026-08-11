@@ -176,7 +176,7 @@ function Update-AddressDisplay {
     $manualFile = Join-Path $toolDir "manual-address.txt"
     $addr = $null
 
-    $manual = if (Test-Path $manualFile) { (Get-Content $manualFile -Raw).Trim() } else { "" }
+    $manual = if (Test-Path $manualFile) { "$(Get-Content $manualFile -Raw)".Trim() } else { "" }
     $manualAddressBox.Text = $manual
 
     if (-not $manual -and (Test-Path $secretFile)) {
@@ -204,7 +204,7 @@ function Update-AddressDisplay {
         $copyButton.IsEnabled = $false
     }
 
-    $setupTunnelButton.Visibility = if ($addr) { "Collapsed" } else { "Visible" }
+    $setupTunnelButton.Visibility = if ($addr -or $manual) { "Collapsed" } else { "Visible" }
     $manualAddressRow.Visibility = if ($addr) { "Collapsed" } else { "Visible" }
 }
 

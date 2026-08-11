@@ -48,7 +48,8 @@ function Resolve-DisplayAddress {
 function Get-LanAddress {
     param([Parameter(Mandatory = $true)][int]$Port)
     try {
-        $candidates = @(Get-NetIPAddress -AddressFamily IPv4 -ErrorAction Stop | Select-Object -ExpandProperty IPAddress)
+        $ifIndex = (Get-NetRoute -DestinationPrefix "0.0.0.0/0" -ErrorAction Stop | Sort-Object RouteMetric | Select-Object -First 1).ifIndex
+        $candidates = @(Get-NetIPAddress -AddressFamily IPv4 -InterfaceIndex $ifIndex -ErrorAction Stop | Select-Object -ExpandProperty IPAddress)
     } catch {
         return ""
     }
