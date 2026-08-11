@@ -153,6 +153,12 @@ Describe "Get-ScreenSize" {
         $s.Height | Should Be 720
     }
 
+    It "returns the ServerSettings size" {
+        $s = Get-ScreenSize -Screen "ServerSettings"
+        $s.Width | Should Be 480
+        $s.Height | Should Be 640
+    }
+
     It "throws a clear error for an unrecognized screen" {
         { Get-ScreenSize -Screen "Confused" } | Should Throw
     }
@@ -174,6 +180,10 @@ Describe "Get-BackTarget" {
 
     It "returns Home as the back target from Console" {
         Get-BackTarget -Screen "Console" | Should Be "Home"
+    }
+
+    It "returns Home for ServerSettings" {
+        Get-BackTarget -Screen "ServerSettings" | Should Be "Home"
     }
 
     It "throws a clear error for an unrecognized screen" {

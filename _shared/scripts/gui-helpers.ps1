@@ -85,10 +85,11 @@ function Get-ScreenSize {
         [Parameter(Mandatory = $true)][string]$Screen
     )
     switch ($Screen) {
-        "Home"       { return [PSCustomObject]@{ Width = 640; Height = 860 } }
-        "ManageMaps" { return [PSCustomObject]@{ Width = 480; Height = 640 } }
-        "AddServer"  { return [PSCustomObject]@{ Width = 480; Height = 580 } }
-        "Console"    { return [PSCustomObject]@{ Width = 640; Height = 720 } }
+        "Home"           { return [PSCustomObject]@{ Width = 640; Height = 860 } }
+        "ManageMaps"     { return [PSCustomObject]@{ Width = 480; Height = 640 } }
+        "AddServer"      { return [PSCustomObject]@{ Width = 480; Height = 580 } }
+        "Console"        { return [PSCustomObject]@{ Width = 640; Height = 720 } }
+        "ServerSettings" { return [PSCustomObject]@{ Width = 480; Height = 640 } }
         default { throw "Unrecognized screen '$Screen'." }
     }
 }
@@ -100,10 +101,11 @@ function Get-BackTarget {
         [Parameter(Mandatory = $true)][string]$Screen
     )
     switch ($Screen) {
-        "Home"       { return $null }
-        "ManageMaps" { return "Home" }
-        "AddServer"  { return "Home" }
-        "Console"    { return "Home" }
+        "Home"           { return $null }
+        "ManageMaps"     { return "Home" }
+        "AddServer"      { return "Home" }
+        "Console"        { return "Home" }
+        "ServerSettings" { return "Home" }
         default { throw "Unrecognized screen '$Screen'." }
     }
 }
