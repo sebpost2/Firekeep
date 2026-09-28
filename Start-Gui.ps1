@@ -856,6 +856,8 @@ $createButton.Add_Click({
                 . (Join-Path $GsRoot "_shared\scripts\curseforge-helpers.ps1")
                 try {
                     $javaVersion = Install-CurseForgeServerZip -ZipPath $localFile -DestPath $dest
+                    # The pack may ship its own server.properties over ours.
+                    Set-RconDefaults -PropsPath (Join-Path $dest "server.properties")
                 } catch {
                     Remove-Item -Recurse -Force $dest
                     throw

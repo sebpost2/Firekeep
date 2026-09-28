@@ -11,6 +11,7 @@ $gsRoot = Split-Path -Parent $mcRoot
 # version from whatever got copied in, so run.config.ps1's default/manually
 # set value only has to be right when detection can't figure it out itself.
 . (Join-Path $gsRoot "_shared\scripts\modloader-helpers.ps1")
+. (Join-Path $gsRoot "_shared\scripts\new-server-helpers.ps1")
 $detectedJavaVersion = Get-DetectedJavaVersion -InstancePath $PSScriptRoot
 if ($detectedJavaVersion -and $detectedJavaVersion -ne $JavaVersion) {
     Write-Host "Detected Java $detectedJavaVersion from the modpack files (run.config.ps1 says $JavaVersion) - using $detectedJavaVersion for this start."
@@ -32,6 +33,10 @@ if (-not $eulaContent -or $eulaContent -notmatch "eula\s*=\s*true") {
     Write-Error "You need to accept the EULA. Read https://aka.ms/MinecraftEULA and set eula=true in eula.txt"
     exit 1
 }
+
+# The app tracks and stops servers over RCON; servers built by hand may not
+# have it on yet.
+Set-RconDefaults -PropsPath (Join-Path $PSScriptRoot "server.properties")
 
 Push-Location $PSScriptRoot
 try {

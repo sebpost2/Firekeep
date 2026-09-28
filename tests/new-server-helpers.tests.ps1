@@ -63,3 +63,41 @@ Describe "Test-ServerNameValid" {
         Test-ServerNameValid -Name "" | Should Be $false
     }
 }
+
+Describe "Set-RconDefaults" {
+
+    function New-PropsFile([string[]]$Lines) {
+        $path = Join-Path $env:TEMP ("rcon-defaults-" + [Guid]::NewGuid().ToString("N") + ".properties")
+        if ($null -ne $Lines) { Set-Content -Path $path -Value $Lines -Encoding ascii }
+        return $path
+    }
+
+    # Servers built by hand (not from the template) had RCON off, so the
+    # GUI showed them as stopped forever and Stop Server couldn't reach them.
+    It "turns RCON on with a port and a random password when missing" {
+        $path = New-PropsFile @("motd=Hi", "enable-rcon=false")
+        Set-RconDefaults -PropsPath $path
+        $props = Get-Content $path -Raw
+        $props | Should Match "(?m)^enable-rcon=true"
+        $props | Should Match "(?m)^rcon\.port=25575"
+        $props | Should Match "(?m)^rcon\.password=\S{16,}"
+        $props | Should Match "(?m)^motd=Hi"
+        Remove-Item $path, "$path.bak" -ErrorAction SilentlyContinue
+    }
+
+    It "creates server.properties if it doesn't exist yet" {
+        $path = New-PropsFile $null
+        Set-RconDefaults -PropsPath $path
+        Get-Content $path -Raw | Should Match "(?m)^rcon\.password=\S+"
+        Remove-Item $path, "$path.bak" -ErrorAction SilentlyContinue
+    }
+
+    It "never changes an existing port or password" {
+        $path = New-PropsFile @("enable-rcon=true", "rcon.port=25580", "rcon.password=keepme")
+        Set-RconDefaults -PropsPath $path
+        $props = Get-Content $path -Raw
+        $props | Should Match "(?m)^rcon\.port=25580"
+        $props | Should Match "(?m)^rcon\.password=keepme"
+        Remove-Item $path, "$path.bak" -ErrorAction SilentlyContinue
+    }
+}
