@@ -349,3 +349,91 @@ Describe "Write-MissingModsFile / Get-MissingModDownloads" {
         try { @(Get-MissingModDownloads -InstancePath $dir).Count | Should Be 0 } finally { Remove-Item -Recurse -Force $dir }
     }
 }
+
+Describe "Install-CurseForgeClientExport (offline, no Forge)" {
+
+    function New-Dest { $d = Join-Path $env:TEMP ("cf-srv-" + [Guid]::NewGuid().ToString("N")); New-Item -ItemType Directory -Path $d | Out-Null; return $d }
+
+    $files = @{
+        "1/10" = @{ Name = "GoodMod-1.0.jar"; Body = (Get-Bytes "good") }
+        "2/20" = @{ Name = "Blocked-2.0.jar"; Body = (Get-Bytes "blocked") }
+        "3/30" = @{ Name = "Faithful-32x.zip"; Body = (Get-Bytes "resourcepack") }
+        "4/40" = @{ Name = "GoodMod-1.0.jar"; Body = (Get-Bytes "good") }
+    }
+    $manifestFiles = '[{"projectID":1,"fileID":10,"required":true},{"projectID":2,"fileID":20,"required":true},{"projectID":3,"fileID":30,"required":true},{"projectID":4,"fileID":40,"required":true},{"projectID":5,"fileID":50,"required":true}]'
+
+    It "downloads the jars, skips non-jars, copies overrides and lists what's missing" {
+        $fake = Start-FakeCurseForge -Files $files -FailTimes @{ "Blocked-2.0.jar" = 99 }
+        $zip = New-TestZip @{
+            "manifest.json"                  = (New-Manifest -FilesJson $manifestFiles)
+            "overrides/config/deep/a.toml"   = "cfg"
+            "overrides/mods/HandAdded.jar"   = "hand"
+            "overrides/resourcepacks/rp.zip" = "rp"
+        }
+        $dest = New-Dest
+        try {
+            $result = Install-CurseForgeClientExport -ZipPath $zip -DestPath $dest -McRoot $env:TEMP -BaseUrl $fake.BaseUrl -SkipServerInstall
+            $result.MissingCount | Should Be 2          # Blocked-2.0.jar + project 5 (unknown to CurseForge)
+            Test-Path (Join-Path $dest "mods\GoodMod-1.0.jar") | Should Be $true
+            Test-Path (Join-Path $dest "mods\HandAdded.jar") | Should Be $true
+            Test-Path (Join-Path $dest "mods\Faithful-32x.zip") | Should Be $false
+            Test-Path (Join-Path $dest "config\deep\a.toml") | Should Be $true
+            Test-Path (Join-Path $dest "resourcepacks") | Should Be $false
+            @(Get-ChildItem (Join-Path $dest "mods") -Filter "*.part").Count | Should Be 0
+            $missing = @(Get-MissingModDownloads -InstancePath $dest)
+            # Name-lookup failures are recorded before download failures.
+            ($missing | ForEach-Object { if ($_.FileName) { $_.FileName } else { "project $($_.ProjectId)" } }) -join "," | Should Be "project 5,Blocked-2.0.jar"
+            # Review focus 3: two manifest entries with the same file name are downloaded once.
+            $fake.Hits["GoodMod-1.0.jar"] | Should Be 1
+        } finally { Stop-FakeCurseForge $fake; Remove-Item $zip; Remove-Item -Recurse -Force $dest }
+    }
+
+    # Review focus 5.
+    It "honours a custom overrides folder name" {
+        $fake = Start-FakeCurseForge -Files @{ "1/10" = $files["1/10"] }
+        $zip = New-TestZip @{
+            "manifest.json"       = (New-Manifest -FilesJson '[{"projectID":1,"fileID":10,"required":true}]' -Overrides "files")
+            "files/config/b.toml" = "cfg"
+        }
+        $dest = New-Dest
+        try {
+            (Install-CurseForgeClientExport -ZipPath $zip -DestPath $dest -McRoot $env:TEMP -BaseUrl $fake.BaseUrl -SkipServerInstall).MissingCount | Should Be 0
+            Test-Path (Join-Path $dest "config\b.toml") | Should Be $true
+            Test-Path (Join-Path $dest "MISSING-MODS.txt") | Should Be $false
+        } finally { Stop-FakeCurseForge $fake; Remove-Item $zip; Remove-Item -Recurse -Force $dest }
+    }
+
+    # Review focus 3: the overrides copy of a jar wins over the downloaded one.
+    It "lets overrides/mods replace a downloaded jar of the same name" {
+        $fake = Start-FakeCurseForge -Files @{ "1/10" = $files["1/10"] }
+        $zip = New-TestZip @{
+            "manifest.json"                  = (New-Manifest -FilesJson '[{"projectID":1,"fileID":10,"required":true}]')
+            "overrides/mods/GoodMod-1.0.jar" = "patched by the pack"
+        }
+        $dest = New-Dest
+        try {
+            Install-CurseForgeClientExport -ZipPath $zip -DestPath $dest -McRoot $env:TEMP -BaseUrl $fake.BaseUrl -SkipServerInstall | Out-Null
+            [System.IO.File]::ReadAllText((Join-Path $dest "mods\GoodMod-1.0.jar")) | Should Be "patched by the pack"
+        } finally { Stop-FakeCurseForge $fake; Remove-Item $zip; Remove-Item -Recurse -Force $dest }
+    }
+
+    It "fails with an internet message when nothing could be downloaded" {
+        $zip = New-TestZip @{ "manifest.json" = (New-Manifest -FilesJson $manifestFiles) }
+        $dest = New-Dest
+        try {
+            { Install-CurseForgeClientExport -ZipPath $zip -DestPath $dest -McRoot $env:TEMP -BaseUrl "http://localhost:1" -SkipServerInstall } |
+                Should Throw "Couldn't reach CurseForge"
+        } finally { Remove-Item $zip; Remove-Item -Recurse -Force $dest }
+    }
+
+    It "refuses a non-Forge pack before downloading anything" {
+        $fake = Start-FakeCurseForge -Files $files
+        $zip = New-TestZip @{ "manifest.json" = (New-Manifest -Loader "neoforge-21.1.77" -FilesJson $manifestFiles) }
+        $dest = New-Dest
+        try {
+            { Install-CurseForgeClientExport -ZipPath $zip -DestPath $dest -McRoot $env:TEMP -BaseUrl $fake.BaseUrl -SkipServerInstall } | Should Throw "NeoForge"
+            $fake.Hits.Count | Should Be 0
+            @(Get-ChildItem $dest).Count | Should Be 0
+        } finally { Stop-FakeCurseForge $fake; Remove-Item $zip; Remove-Item -Recurse -Force $dest }
+    }
+}

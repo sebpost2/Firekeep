@@ -402,3 +402,113 @@ function Get-MissingModDownloads {
     if ($missing.Count -eq 0) { Remove-Item -LiteralPath $listPath -Force }
     return $missing
 }
+
+# Downloads Forge's official installer and runs --installServer into
+# $DestPath. Success means run.bat exists afterwards (start.ps1 launches it).
+# On failure the installer's output is kept in %TEMP% and named in the error.
+function Install-ForgeServer {
+    param(
+        [Parameter(Mandatory = $true)][string]$McVersion,
+        [Parameter(Mandatory = $true)][string]$ForgeVersion,
+        [Parameter(Mandatory = $true)][string]$DestPath,
+        [Parameter(Mandatory = $true)][string]$JavaExe,
+        [string]$MavenBase = "https://maven.minecraftforge.net"
+    )
+    $full = "$McVersion-$ForgeVersion"
+    $installer = Join-Path $env:TEMP ("forge-$full-installer-" + [Guid]::NewGuid().ToString("N") + ".jar")
+    $logPath = Join-Path $env:TEMP ("forge-$full-install-" + [Guid]::NewGuid().ToString("N") + ".log")
+    Save-UrlToFile -Url "$MavenBase/net/minecraftforge/forge/$full/forge-$full-installer.jar" -Path $installer
+    try {
+        $ErrorActionPreference = "Continue"   # the installer logs to stderr
+        $output = & $JavaExe -jar $installer --installServer $DestPath 2>&1 | ForEach-Object { "$_" }
+        [System.IO.File]::WriteAllLines($logPath, [string[]]$output)
+    } finally {
+        Remove-Item -LiteralPath $installer -Force -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath "$installer.log" -Force -ErrorAction SilentlyContinue
+    }
+    if (-not (Test-Path (Join-Path $DestPath "run.bat"))) {
+        throw "Forge's installer failed - its log is at $logPath"
+    }
+    $logsDir = Join-Path $DestPath "logs"
+    New-Item -ItemType Directory -Force -Path $logsDir | Out-Null
+    Move-Item -LiteralPath $logPath -Destination (Join-Path $logsDir "forge-installer.log") -Force
+}
+
+# Builds a server from a CurseForge client export into $DestPath:
+# manifest -> resolve every file's name -> download the .jar ones into mods\
+# -> copy + verify overrides\ (minus resource/shader packs) -> Java -> Forge.
+# Mods that couldn't be fetched go to MISSING-MODS.txt instead of failing
+# the import - unless nothing at all could be fetched, which means no
+# connection. -BaseUrl and -SkipServerInstall exist for tests.
+function Install-CurseForgeClientExport {
+    param(
+        [Parameter(Mandatory = $true)][string]$ZipPath,
+        [Parameter(Mandatory = $true)][string]$DestPath,
+        [Parameter(Mandatory = $true)][string]$McRoot,
+        [string]$BaseUrl = "https://www.curseforge.com",
+        [switch]$SkipServerInstall
+    )
+    $manifest = Read-CurseForgeManifest -ZipPath $ZipPath
+
+    $lookups = @($manifest.Files | ForEach-Object {
+        [pscustomobject]@{ ProjectId = $_.ProjectId; FileId = $_.FileId; BaseUrl = $BaseUrl }
+    })
+    $resolved = @()
+    if ($lookups.Count -gt 0) {
+        $resolved = Invoke-ParallelDownload -Items $lookups -Functions @("Resolve-CurseForgeFile") -Activity "Looking up mods" -Work {
+            param($i) Resolve-CurseForgeFile -ProjectId $i.ProjectId -FileId $i.FileId -BaseUrl $i.BaseUrl
+        }
+    }
+
+    $missing = @($resolved | Where-Object { -not $_.Ok } | ForEach-Object {
+        [pscustomobject]@{ FileName = $null; ProjectId = $_.Item.ProjectId; FileId = $_.Item.FileId }
+    })
+
+    # One download per file name, even if the manifest lists it twice.
+    $modsDir = Join-Path $DestPath "mods"
+    New-Item -ItemType Directory -Force -Path $modsDir | Out-Null
+    $seen = @{}
+    $downloads = @()
+    foreach ($r in ($resolved | Where-Object { $_.Ok -and $_.Result.FileName -like "*.jar" })) {
+        if ($seen.ContainsKey($r.Result.FileName)) { continue }
+        $seen[$r.Result.FileName] = $true
+        $downloads += [pscustomobject]@{
+            Url = $r.Result.Url; Path = (Join-Path $modsDir $r.Result.FileName)
+            FileName = $r.Result.FileName; ProjectId = $r.Item.ProjectId; FileId = $r.Item.FileId
+        }
+    }
+    $fetched = @()
+    if ($downloads.Count -gt 0) {
+        $fetched = Invoke-ParallelDownload -Items $downloads -Functions @("Save-UrlToFile") -Activity "Downloading mods" -Work {
+            param($i) Save-UrlToFile -Url $i.Url -Path $i.Path
+        }
+    }
+    $missing += @($fetched | Where-Object { -not $_.Ok } | ForEach-Object {
+        [pscustomobject]@{ FileName = $_.Item.FileName; ProjectId = $_.Item.ProjectId; FileId = $_.Item.FileId }
+    })
+
+    if ($manifest.Files.Count -gt 0 -and @($fetched | Where-Object { $_.Ok }).Count -eq 0) {
+        throw "Couldn't reach CurseForge - check the internet connection and try again."
+    }
+
+    Write-Progress -Activity "Copying the modpack's settings" -Status " "
+    Expand-ZipFolderVerified -ZipPath $ZipPath -Prefix "$($manifest.OverridesDir)/" -Destination $DestPath -ExcludeTop @("resourcepacks", "shaderpacks") | Out-Null
+
+    if ($missing.Count -gt 0) { Write-MissingModsFile -InstancePath $DestPath -Entries $missing }
+
+    $javaVersion = $null
+    if (-not $SkipServerInstall) {
+        $javaVersion = Get-JavaVersionForMinecraft -McVersion $manifest.McVersion
+        Write-Progress -Activity "Installing Java $javaVersion" -Status " "
+        $javaOutput = & (Join-Path $McRoot "scripts\install-java.ps1") -MajorVersion $javaVersion 2>&1
+        if ($LASTEXITCODE -ne 0) {
+            $reason = ($javaOutput | ForEach-Object { if ($_ -is [System.Management.Automation.ErrorRecord]) { $_.Exception.Message } else { "$_" } }) -join " "
+            throw "Firekeep couldn't install Java $javaVersion - check the internet connection and try again. ($reason)"
+        }
+        Write-Progress -Activity "Installing Forge $($manifest.ForgeVersion)" -Status " "
+        Install-ForgeServer -McVersion $manifest.McVersion -ForgeVersion $manifest.ForgeVersion -DestPath $DestPath `
+            -JavaExe (Join-Path $McRoot "tools\java\$javaVersion\bin\java.exe")
+    }
+
+    return [pscustomobject]@{ JavaVersion = $javaVersion; MissingCount = $missing.Count }
+}
