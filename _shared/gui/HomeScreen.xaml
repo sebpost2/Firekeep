@@ -16,7 +16,7 @@
 
     <!-- Title -->
     <StackPanel Grid.Row="0" Margin="0,0,0,24">
-        <TextBlock Text="GAME SERVERS" Foreground="{StaticResource TextBrush}"
+        <TextBlock Text="FIREKEEP" Foreground="{StaticResource TextBrush}"
                    FontFamily="Segoe UI Black" FontSize="28" HorizontalAlignment="Center"/>
         <TextBlock Text="Your friends' world, one click away" Foreground="{StaticResource MutedTextBrush}"
                    FontFamily="Segoe UI" FontSize="13" HorizontalAlignment="Center" Margin="0,4,0,0"/>
