@@ -367,9 +367,13 @@ $excludeModButton.Add_Click({
     $jar = $script:clientOnlyJar
     if (-not $jar -or -not $script:selected) { return }
     if (-not (Show-ConfirmDialog -Overlay $overlay -Message "Move $jar out of the mods folder (into _excluded\client-only) and start the server again?")) { return }
-    $target = Join-Path $script:selected.Path "_excluded\client-only"
-    New-Item -ItemType Directory -Force -Path $target | Out-Null
-    Move-Item -LiteralPath (Join-Path $script:selected.Path "mods\$jar") -Destination $target -Force
+    try {
+        Move-ModAside -InstancePath $script:selected.Path -JarName $jar
+    } catch {
+        $script:startupFailureText = "Couldn't move $jar ($($_.Exception.Message)). Close anything using it and try again."
+        $homeHintText.Text = $script:startupFailureText
+        return
+    }
     $script:clientOnlyJar = $null
     $script:startupFailureText = $null
     $excludeModButton.Visibility = "Collapsed"

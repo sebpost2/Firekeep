@@ -174,6 +174,24 @@ function Stop-ProcessTree {
     Stop-Process -Id $ProcessId -Force -ErrorAction SilentlyContinue
 }
 
+# The jar named by an "invalid dist DEDICATED_SERVER" crash. Forge crash
+# reports have one "-- MOD <id> --" section per failing mod, with its
+# "Mod File:" line BEFORE the failure text, so the jar is taken from the
+# section that contains the failure. Without such a section (a plain log
+# line), the first "Mod File:" after the failure is used.
+function Get-InvalidDistModFile {
+    param([AllowEmptyString()][string]$ConsoleText = "")
+    $marker = "invalid dist DEDICATED_SERVER"
+    $at = $ConsoleText.IndexOf($marker)
+    if ($at -lt 0) { return $null }
+    $modFile = 'Mod File: .*[\\/]mods[\\/]([^\\/\r\n]+\.jar)'
+    foreach ($section in ($ConsoleText -split '(?m)^(?=-- )')) {
+        if ($section.StartsWith("-- MOD ") -and $section.Contains($marker) -and $section -match $modFile) { return $Matches[1] }
+    }
+    if ($ConsoleText.Substring($at) -match $modFile) { return $Matches[1] }
+    return $null
+}
+
 # Turns a failed start into one sentence a non-technical user can act on.
 # $ConsoleText is logs\firekeep-console.log (everything the server and Java
 # printed, captured by start.ps1). Returns $null while nothing says startup
@@ -205,8 +223,9 @@ function Get-StartupFailure {
         return "This server's Java install is broken. Start it again - Firekeep repairs Java on the next start."
     }
     if ($ConsoleText -match 'invalid dist DEDICATED_SERVER') {
-        if ($ConsoleText -match 'Mod File: .*[\/]mods[\/]([^\/\r\n]+\.jar)') {
-            return "A mod that only works in the game client stopped the server: $($Matches[1]). Move that file out of the server's mods folder and start again."
+        $jar = Get-InvalidDistModFile -ConsoleText $ConsoleText
+        if ($jar) {
+            return "A mod that only works in the game client stopped the server: $jar. Move that file out of the server's mods folder and start again."
         }
         return "A mod that only works in the game client stopped the server. The crash report names it - move that mod out of the server's mods folder and start again."
     }
@@ -330,16 +349,21 @@ function Get-ClientOnlyModJar {
         [AllowEmptyString()][string]$ConsoleText = ""
     )
     $modsDir = Join-Path $InstancePath "mods"
-    $distAt = $ConsoleText.IndexOf("invalid dist DEDICATED_SERVER")
-    if ($distAt -ge 0 -and $ConsoleText.Substring($distAt) -match 'Mod File: .*[\\/]mods[\\/]([^\\/\r\n]+\.jar)') {
-        $jar = $Matches[1]
+    $jar = Get-InvalidDistModFile -ConsoleText $ConsoleText
+    if ($jar) {
         if (Test-Path -LiteralPath (Join-Path $modsDir $jar)) { return $jar }
         return $null
     }
     if ($ConsoleText -match 'Mixin apply for mod ([\w-]+) failed') {
         $modId = $Matches[1]
         Add-Type -AssemblyName System.IO.Compression.FileSystem
-        foreach ($file in (Get-ChildItem -LiteralPath $modsDir -Filter "*.jar" -File -ErrorAction SilentlyContinue)) {
+        # Opening every jar takes a second or two on a big pack (this runs on
+        # the UI thread), so jars whose name looks like the mod id go first.
+        $jars = @(Get-ChildItem -LiteralPath $modsDir -Filter "*.jar" -File -ErrorAction SilentlyContinue)
+        $key = ($modId -replace '[-_ ]', '')
+        $likely = @($jars | Where-Object { ($_.BaseName -replace '[-_ ]', '') -like "*$key*" })
+        $ordered = $likely + @($jars | Where-Object { $likely -notcontains $_ })
+        foreach ($file in $ordered) {
             try { $zip = [System.IO.Compression.ZipFile]::OpenRead($file.FullName) } catch { continue }
             try {
                 $toml = $zip.GetEntry("META-INF/mods.toml")
@@ -353,4 +377,17 @@ function Get-ClientOnlyModJar {
         }
     }
     return $null
+}
+
+# The one-click fix: moves a mod the server refused into _excluded\client-only
+# (never deletes it). Throws if the move fails, so the caller doesn't restart
+# the server as if it had worked.
+function Move-ModAside {
+    param(
+        [Parameter(Mandatory = $true)][string]$InstancePath,
+        [Parameter(Mandatory = $true)][string]$JarName
+    )
+    $target = Join-Path $InstancePath "_excluded\client-only"
+    New-Item -ItemType Directory -Force -Path $target | Out-Null
+    Move-Item -LiteralPath (Join-Path $InstancePath "mods\$JarName") -Destination $target -Force -ErrorAction Stop
 }

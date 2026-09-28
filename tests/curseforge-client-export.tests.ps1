@@ -46,6 +46,11 @@ Describe "Get-CurseForgeZipKind" {
         try { Get-CurseForgeZipKind -ZipPath $zip | Should Be "ClientExport" } finally { Remove-Item $zip }
     }
 
+    It "ignores launcher-like names inside a custom overrides folder too" {
+        $zip = New-TestZip @{ "manifest.json" = (New-Manifest -Overrides "files"); "files/config/somemod/run.bat" = "x" }
+        try { Get-CurseForgeZipKind -ZipPath $zip | Should Be "ClientExport" } finally { Remove-Item $zip }
+    }
+
     It "returns null for an unrelated zip" {
         $zip = New-TestZip @{ "photos/cat.png" = "x" }
         try { Get-CurseForgeZipKind -ZipPath $zip | Should Be $null } finally { Remove-Item $zip }
@@ -234,6 +239,11 @@ Describe "Resolve-CurseForgeFile" {
             $r.Url | Should Match "^$([regex]::Escape($fake.BaseUrl))/files/"
             $fake.Hits.Count | Should Be 0
         } finally { Stop-FakeCurseForge $fake }
+    }
+
+    It "refuses a file name that would leave the mods folder" {
+        $fake = Start-FakeCurseForge -Files @{ "8/80" = @{ Name = "..\..\evil.jar"; Body = (Get-Bytes "x") } }
+        try { { Resolve-CurseForgeFile -ProjectId 8 -FileId 80 -BaseUrl $fake.BaseUrl } | Should Throw "Unsafe file name" } finally { Stop-FakeCurseForge $fake }
     }
 
     It "throws for a file CurseForge doesn't know" {
@@ -441,6 +451,28 @@ Describe "Install-CurseForgeClientExport (offline, no Forge)" {
         } finally { Stop-FakeCurseForge $fake; Remove-Item $zip; Remove-Item -Recurse -Force $dest }
     }
 
+    It "copies overrides whatever the folder name's case or trailing slash" {
+        $fake = Start-FakeCurseForge -Files @{ "1/10" = $files["1/10"] }
+        $zip = New-TestZip @{
+            "manifest.json"           = (New-Manifest -FilesJson '[{"projectID":1,"fileID":10,"required":true}]' -Overrides "overrides/")
+            "Overrides/config/c.toml" = "cfg"
+        }
+        $dest = New-Dest
+        try {
+            Install-CurseForgeClientExport -ZipPath $zip -DestPath $dest -McRoot $env:TEMP -BaseUrl $fake.BaseUrl -SkipServerInstall | Out-Null
+            Test-Path (Join-Path $dest "config\c.toml") | Should Be $true
+        } finally { Stop-FakeCurseForge $fake; Remove-Item $zip; Remove-Item -Recurse -Force $dest }
+    }
+
+    It "doesn't blame the internet when the pack simply has no mod jars" {
+        $fake = Start-FakeCurseForge -Files @{ "3/30" = $files["3/30"] }
+        $zip = New-TestZip @{ "manifest.json" = (New-Manifest -FilesJson '[{"projectID":3,"fileID":30,"required":true}]') }
+        $dest = New-Dest
+        try {
+            (Install-CurseForgeClientExport -ZipPath $zip -DestPath $dest -McRoot $env:TEMP -BaseUrl $fake.BaseUrl -SkipServerInstall).MissingCount | Should Be 0
+        } finally { Stop-FakeCurseForge $fake; Remove-Item $zip; Remove-Item -Recurse -Force $dest }
+    }
+
     It "fails with an internet message when nothing could be downloaded" {
         $zip = New-TestZip @{ "manifest.json" = (New-Manifest -FilesJson $manifestFiles) }
         $dest = New-Dest
@@ -459,5 +491,17 @@ Describe "Install-CurseForgeClientExport (offline, no Forge)" {
             $fake.Hits.Count | Should Be 0
             @(Get-ChildItem $dest).Count | Should Be 0
         } finally { Stop-FakeCurseForge $fake; Remove-Item $zip; Remove-Item -Recurse -Force $dest }
+    }
+}
+
+Describe "Install-ForgeServer" {
+    It "says plainly when Forge's installer can't be downloaded" {
+        $fake = Start-FakeCurseForge -Files @{}
+        $dest = Join-Path $env:TEMP ("cf-forge-" + [Guid]::NewGuid().ToString("N"))
+        New-Item -ItemType Directory -Path $dest | Out-Null
+        try {
+            { Install-ForgeServer -McVersion "1.20.1" -ForgeVersion "47.4.20" -DestPath $dest -JavaExe "java.exe" -MavenBase $fake.BaseUrl } |
+                Should Throw "Couldn't download Forge 47.4.20's installer"
+        } finally { Stop-FakeCurseForge $fake; Remove-Item -Recurse -Force $dest }
     }
 }

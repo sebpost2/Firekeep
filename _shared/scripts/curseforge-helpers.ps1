@@ -115,24 +115,36 @@ function Get-CurseForgeZipKind {
     param([Parameter(Mandatory = $true)][string]$ZipPath)
     $zip = [System.IO.Compression.ZipFile]::OpenRead($ZipPath)
     try {
+        $json = $null
+        $manifest = $zip.GetEntry("manifest.json")
+        if ($manifest) {
+            try { $json = Read-ZipEntryText $manifest | ConvertFrom-Json } catch { $json = $null }
+        }
+        # A pack's own files (configs can be called anything) aren't launchers.
+        $overridesPrefix = (Get-OverridesFolderName $json) + "/"
         foreach ($entry in $zip.Entries) {
             $name = $entry.FullName -replace '\\', '/'
-            if ($name -like "overrides/*") { continue }
+            if ($name.StartsWith($overridesPrefix, [StringComparison]::OrdinalIgnoreCase)) { continue }
             $leaf = ($name -split '/')[-1]
             if ($leaf -eq "variables.txt" -or $leaf -eq "run.bat" -or $leaf -eq "startserver.bat" -or
                 $leaf -match '^fabric-server-mc\.' -or $leaf -match '^forge-.*-installer\.jar$') {
                 return "ServerFiles"
             }
         }
-        $manifest = $zip.GetEntry("manifest.json")
-        if ($manifest) {
-            try { $json = Read-ZipEntryText $manifest | ConvertFrom-Json } catch { $json = $null }
-            if ($json -and $json.manifestType -eq "minecraftModpack") { return "ClientExport" }
-        }
+        if ($json -and $json.manifestType -eq "minecraftModpack") { return "ClientExport" }
         return $null
     } finally {
         $zip.Dispose()
     }
+}
+
+# The manifest's overrides folder name, normalised ("overrides/", "files\"
+# and a missing value all work).
+function Get-OverridesFolderName {
+    param($Manifest)
+    $name = if ($Manifest -and $Manifest.overrides) { ("$($Manifest.overrides)" -replace '\\', '/').Trim('/') } else { "" }
+    if (-not $name) { $name = "overrides" }
+    return $name
 }
 
 # Reads manifest.json from a client export. Forge only: any other loader
@@ -171,7 +183,7 @@ function Read-CurseForgeManifest {
     $files = @($json.files | Where-Object { $_.required -ne $false } | ForEach-Object {
         [pscustomobject]@{ ProjectId = [int]$_.projectID; FileId = [int]$_.fileID }
     })
-    $overrides = if ($json.overrides) { "$($json.overrides)" } else { "overrides" }
+    $overrides = Get-OverridesFolderName $json
     return [pscustomobject]@{
         McVersion    = "$($json.minecraft.version)"
         ForgeVersion = $forgeVersion
@@ -219,7 +231,7 @@ function Expand-ZipFolderVerified {
         $copied = @()
         foreach ($entry in $zip.Entries) {
             $name = $entry.FullName -replace '\\', '/'
-            if (-not $name.StartsWith($Prefix) -or $name.EndsWith('/')) { continue }
+            if (-not $name.StartsWith($Prefix, [StringComparison]::OrdinalIgnoreCase) -or $name.EndsWith('/')) { continue }
             $relative = $name.Substring($Prefix.Length)
             if (-not $relative) { continue }
             if ($ExcludeTop -contains ($relative -split '/')[0]) { continue }
@@ -263,6 +275,11 @@ function Resolve-CurseForgeFile {
     if (-not $location) { throw "CurseForge gave no download location for project $ProjectId file $FileId" }
     $uri = New-Object System.Uri((New-Object System.Uri($BaseUrl)), $location)
     $fileName = [System.Uri]::UnescapeDataString(($uri.AbsolutePath -split '/')[-1])
+    # It becomes a path under mods\, so it must be a plain file name.
+    if (-not $fileName -or $fileName.IndexOfAny([System.IO.Path]::GetInvalidFileNameChars()) -ge 0 -or
+        $fileName -ne [System.IO.Path]::GetFileName($fileName) -or $fileName -match '^\.+$') {
+        throw "Unsafe file name from CurseForge for project $ProjectId file $FileId`: $fileName"
+    }
     return [pscustomobject]@{ FileName = $fileName; Url = $uri.AbsoluteUri }
 }
 
@@ -436,11 +453,15 @@ function Install-ForgeServer {
     $full = "$McVersion-$ForgeVersion"
     $installer = Join-Path $env:TEMP ("forge-$full-installer-" + [Guid]::NewGuid().ToString("N") + ".jar")
     $logPath = Join-Path $env:TEMP ("forge-$full-install-" + [Guid]::NewGuid().ToString("N") + ".log")
-    Save-UrlToFile -Url "$MavenBase/net/minecraftforge/forge/$full/forge-$full-installer.jar" -Path $installer
+    try {
+        Save-UrlToFile -Url "$MavenBase/net/minecraftforge/forge/$full/forge-$full-installer.jar" -Path $installer
+    } catch {
+        throw "Couldn't download Forge $ForgeVersion's installer - check the internet connection and try again. ($($_.Exception.Message))"
+    }
     try {
         $ErrorActionPreference = "Continue"   # the installer logs to stderr
         $output = & $JavaExe -jar $installer --installServer $DestPath 2>&1 | ForEach-Object { "$_" }
-        [System.IO.File]::WriteAllLines($logPath, [string[]]$output)
+        [System.IO.File]::WriteAllLines($logPath, [string[]]@($output))
     } finally {
         Remove-Item -LiteralPath $installer -Force -ErrorAction SilentlyContinue
         Remove-Item -LiteralPath "$installer.log" -Force -ErrorAction SilentlyContinue
@@ -506,7 +527,9 @@ function Install-CurseForgeClientExport {
         [pscustomobject]@{ FileName = $_.Item.FileName; ProjectId = $_.Item.ProjectId; FileId = $_.Item.FileId }
     })
 
-    if ($manifest.Files.Count -gt 0 -and @($fetched | Where-Object { $_.Ok }).Count -eq 0) {
+    $noLookups = @($resolved | Where-Object { $_.Ok }).Count -eq 0
+    $noDownloads = $downloads.Count -gt 0 -and @($fetched | Where-Object { $_.Ok }).Count -eq 0
+    if ($manifest.Files.Count -gt 0 -and ($noLookups -or $noDownloads)) {
         throw "Couldn't reach CurseForge - check the internet connection and try again."
     }
 

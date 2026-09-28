@@ -523,6 +523,25 @@ Describe "Get-ClientOnlyModJar" {
         } finally { Remove-Item -Recurse -Force $dir }
     }
 
+    # Real Forge crash reports list "Mod File:" BEFORE the failure message
+    # inside each "-- MOD x --" section, and can have several sections.
+    It "takes the jar from the same MOD section as the 'invalid dist' failure" {
+        $dir = New-Instance
+        try {
+            New-ModJar (Join-Path $dir "mods") "blur-5.0.jar" "blur"
+            New-ModJar (Join-Path $dir "mods") "oculus-1.8.jar" "oculus"
+            $text = @(
+                "-- MOD blur --", "Details:", "`tMod File: /D:/srv/mods/blur-5.0.jar", "`tFailure message: Blur (blur) has failed to load correctly",
+                "`t`tjava.lang.NullPointerException",
+                "-- MOD oculus --", "Details:", "`tMod File: /D:/srv/mods/oculus-1.8.jar", "`tFailure message: Oculus (oculus) encountered an error",
+                "`t`tjava.lang.RuntimeException: Attempted to load class net/minecraft/client/Minecraft for invalid dist DEDICATED_SERVER",
+                "-- System Details --", "Failed to start the minecraft server"
+            ) -join "`n"
+            Get-ClientOnlyModJar -InstancePath $dir -ConsoleText $text | Should Be "oculus-1.8.jar"
+            Get-StartupFailure -ConsoleText $text | Should Match "oculus-1\.8\.jar"
+        } finally { Remove-Item -Recurse -Force $dir }
+    }
+
     It "finds a Mixin failure's mod by the modId inside the jars" {
         $dir = New-Instance
         try {
@@ -534,6 +553,14 @@ Describe "Get-ClientOnlyModJar" {
     }
 
     # Review focus 4.
+    It "finds a Mixin failure's mod even when the jar name doesn't contain the id" {
+        $dir = New-Instance
+        try {
+            New-ModJar (Join-Path $dir "mods") "Ryoamic-Lights-0.2.jar" "ryoamiclights"
+            Get-ClientOnlyModJar -InstancePath $dir -ConsoleText "Mixin apply for mod ryoamiclights failed x.mixins.json:Y" | Should Be "Ryoamic-Lights-0.2.jar"
+        } finally { Remove-Item -Recurse -Force $dir }
+    }
+
     It "handles jar names with square brackets" {
         $dir = New-Instance
         try {
@@ -554,5 +581,31 @@ Describe "Get-ClientOnlyModJar" {
     It "returns null for crashes that aren't about a client-only mod" {
         $dir = New-Instance
         try { Get-ClientOnlyModJar -InstancePath $dir -ConsoleText "java.lang.OutOfMemoryError" | Should Be $null } finally { Remove-Item -Recurse -Force $dir }
+    }
+}
+
+Describe "Move-ModAside" {
+    function New-Instance { $d = Join-Path $env:TEMP ("aside-" + [Guid]::NewGuid().ToString("N")); New-Item -ItemType Directory -Force -Path (Join-Path $d "mods") | Out-Null; return $d }
+
+    It "moves the jar into _excluded\client-only" {
+        $dir = New-Instance
+        try {
+            Set-Content -Path (Join-Path $dir "mods\a.jar") -Value "x"
+            Move-ModAside -InstancePath $dir -JarName "a.jar"
+            Test-Path (Join-Path $dir "_excluded\client-only\a.jar") | Should Be $true
+            Test-Path (Join-Path $dir "mods\a.jar") | Should Be $false
+        } finally { Remove-Item -Recurse -Force $dir }
+    }
+
+    # The one-click fix must not restart the server as if it had worked.
+    It "throws, leaving the jar in place, when it can't be moved" {
+        $dir = New-Instance
+        $jar = Join-Path $dir "mods\held.jar"
+        Set-Content -Path $jar -Value "x"
+        $lock = [System.IO.File]::Open($jar, 'Open', 'Read', 'None')
+        try {
+            { Move-ModAside -InstancePath $dir -JarName "held.jar" } | Should Throw
+            Test-Path $jar | Should Be $true
+        } finally { $lock.Close(); Remove-Item -Recurse -Force $dir }
     }
 }
