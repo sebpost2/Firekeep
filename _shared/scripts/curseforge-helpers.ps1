@@ -160,6 +160,14 @@ function Read-CurseForgeManifest {
     }
     $forgeVersion = $Matches[1]
 
+    # Forge installers before 1.17 make no run.bat, which is what start.ps1
+    # launches - so refuse now rather than after downloading every mod.
+    $mcVersion = "$($json.minecraft.version)"
+    $parts = $mcVersion -split '\.'
+    if ([int]$parts[0] -eq 1 -and [int]$parts[1] -lt 17) {
+        throw "This modpack is for Minecraft $mcVersion - Firekeep can only import Forge modpacks for Minecraft 1.17 and newer."
+    }
+
     $files = @($json.files | Where-Object { $_.required -ne $false } | ForEach-Object {
         [pscustomobject]@{ ProjectId = [int]$_.projectID; FileId = [int]$_.fileID }
     })
@@ -293,6 +301,11 @@ function Invoke-ParallelDownload {
         [int]$Retries = 3,
         [string]$Activity = "Downloading"
     )
+    # .NET allows 2 connections per host by default, which would leave the
+    # other workers queued (and timing out) behind them. Process-wide.
+    if ([System.Net.ServicePointManager]::DefaultConnectionLimit -lt $Throttle) {
+        [System.Net.ServicePointManager]::DefaultConnectionLimit = $Throttle
+    }
     $state = [System.Management.Automation.Runspaces.InitialSessionState]::CreateDefault()
     foreach ($name in $Functions) {
         $definition = (Get-Command $name -CommandType Function).Definition
@@ -362,11 +375,17 @@ function Write-MissingModsFile {
         "Download each one from its link and put the .jar file in this server's",
         "'mods' folder, then press Start again. The version must be exactly the",
         "one named here, or players won't be able to join.",
+        "If a mod can't be downloaded anymore, or its page shows it isn't a mod",
+        "(a resource pack, a shader), delete its block from this file.",
         ""
     )
     foreach ($e in $Entries) {
         $label = if ($e.FileName) { $e.FileName } else { "? (project $($e.ProjectId), file $($e.FileId))" }
         $lines += "mod: $label"
+        if (-not $e.FileName) {
+            $lines += "  (Firekeep couldn't find this file's name, so it can't tell when it's there:"
+            $lines += "   once its .jar is in 'mods', delete this block, then press Start.)"
+        }
         $lines += "  page:     https://www.curseforge.com/projects/$($e.ProjectId)"
         $lines += "  download: https://www.curseforge.com/api/v1/mods/$($e.ProjectId)/files/$($e.FileId)/download"
         $lines += ""

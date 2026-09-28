@@ -19,8 +19,8 @@ function New-TestZip([hashtable]$Entries) {
     return $path
 }
 
-function New-Manifest([string]$Loader = "forge-47.4.20", [string]$FilesJson = '[{"projectID":1,"fileID":10,"required":true}]', [string]$Overrides = "overrides") {
-    return '{"minecraft":{"version":"1.20.1","modLoaders":[{"id":"' + $Loader + '","primary":true}]},"manifestType":"minecraftModpack","files":' + $FilesJson + ',"overrides":"' + $Overrides + '"}'
+function New-Manifest([string]$Loader = "forge-47.4.20", [string]$FilesJson = '[{"projectID":1,"fileID":10,"required":true}]', [string]$Overrides = "overrides", [string]$McVersion = "1.20.1") {
+    return '{"minecraft":{"version":"' + $McVersion + '","modLoaders":[{"id":"' + $Loader + '","primary":true}]},"manifestType":"minecraftModpack","files":' + $FilesJson + ',"overrides":"' + $Overrides + '"}'
 }
 
 Describe "Get-CurseForgeZipKind" {
@@ -82,6 +82,13 @@ Describe "Read-CurseForgeManifest" {
     It "refuses NeoForge with a clear message" {
         $zip = New-TestZip @{ "manifest.json" = (New-Manifest -Loader "neoforge-21.1.77") }
         try { { Read-CurseForgeManifest -ZipPath $zip } | Should Throw "uses NeoForge, which Firekeep can't import yet" } finally { Remove-Item $zip }
+    }
+
+    # Forge installers before 1.17 make no run.bat, so the import would
+    # download everything and only then fail with a misleading error.
+    It "refuses a Forge pack for Minecraft before 1.17 up front" {
+        $zip = New-TestZip @{ "manifest.json" = (New-Manifest -Loader "forge-36.2.39" -McVersion "1.16.5") }
+        try { { Read-CurseForgeManifest -ZipPath $zip } | Should Throw "1.17 and newer" } finally { Remove-Item $zip }
     }
 
     It "refuses Fabric with a clear message" {
@@ -277,6 +284,13 @@ Describe "Invoke-ParallelDownload + Save-UrlToFile" {
         } finally { Stop-FakeCurseForge $fake; Remove-Item -Recurse -Force $dest }
     }
 
+    # .NET allows 2 connections per host by default, so without raising it
+    # only 2 of the 6 workers download and the rest queue until they time out.
+    It "lets every worker connect at once" {
+        Invoke-ParallelDownload -Items @(1) -Work { param($i) $i } -Throttle 6 | Out-Null
+        [System.Net.ServicePointManager]::DefaultConnectionLimit | Should BeGreaterThan 5
+    }
+
     # Review focus 4.
     It "saves names with square brackets" {
         $fake = Start-FakeCurseForge -Files @{ "1/1" = @{ Name = "[1.20.1]Mod.jar"; Body = (Get-Bytes "b") } }
@@ -341,6 +355,16 @@ Describe "Write-MissingModsFile / Get-MissingModDownloads" {
             $left.Count | Should Be 1
             $left[0].FileName | Should Be $null
             $left[0].ProjectId | Should Be 9
+        } finally { Remove-Item -Recurse -Force $dir }
+    }
+
+    # A name that was never found can't be matched against mods\, so the
+    # user needs to be told how to clear it themselves.
+    It "tells the user how to clear an entry Firekeep can't check" {
+        $dir = New-Instance
+        try {
+            Write-MissingModsFile -InstancePath $dir -Entries @([pscustomobject]@{ FileName = $null; ProjectId = 9; FileId = 90 })
+            Get-Content (Join-Path $dir "MISSING-MODS.txt") -Raw | Should Match "delete this block"
         } finally { Remove-Item -Recurse -Force $dir }
     }
 
