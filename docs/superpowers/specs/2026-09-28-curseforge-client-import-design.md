@@ -21,7 +21,7 @@ Facts checked against the real export (`Arcadia [RPG]-v3.8.2-fixed.zip`):
 ## Decisions (made with the user)
 
 | Question | Decision |
-|---|---|
+| --- | --- |
 | Loaders in the first version | **Forge only.** NeoForge/Fabric exports get a clear "not supported yet" message. NeoForge is a later follow-up (same installer model). |
 | Client-only mod crashes | **One-click fix with confirmation**: a Home button moves the named jar to `_excluded\client-only\` and starts again. Never automatic. |
 | Mods that can't be downloaded | **Finish the import and list them.** Start stays blocked until the listed jars are present. |
@@ -88,7 +88,7 @@ Orchestrates 2 → 3 (all files) → filter `.jar` → 4 (download into `mods/`)
 ## Error handling
 
 | Failure | Behaviour |
-|---|---|
+| --- | --- |
 | Loader isn't Forge | Stop before downloading; no folder created. |
 | Name lookup fails | Retry 3 times; then listed in `MISSING-MODS.txt` by project link. |
 | Jar download fails (blocked, removed, network) | Retry 3 times; delete the `.part` file; list as missing. |
