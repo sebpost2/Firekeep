@@ -3,7 +3,7 @@
 All notable changes to this project are documented here. Loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [1.1.0] - 2026-09-28
 
 ### Added
 - Automatic world backup on the first start of each day, into the server's
