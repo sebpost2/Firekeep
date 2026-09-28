@@ -173,3 +173,57 @@ function Stop-ProcessTree {
     }
     Stop-Process -Id $ProcessId -Force -ErrorAction SilentlyContinue
 }
+
+# Turns a failed start into one sentence a non-technical user can act on.
+# $ConsoleText is logs\firekeep-console.log (everything the server and Java
+# printed, captured by start.ps1). Returns $null while nothing says startup
+# failed - unless the launcher already exited, which during "Starting"
+# always means it did. Some Forge crashes never exit the process (the log
+# ends at "Negative index in crash report handler"), so the text is checked
+# for a fatal marker rather than waiting for the process.
+function Get-StartupFailure {
+    param(
+        [AllowEmptyString()][string]$ConsoleText = "",
+        [bool]$LauncherExited = $false
+    )
+    $fatal = 'Failed to start the minecraft server|Could not create the Java Virtual Machine|Error occurred during initialization of VM|---- Minecraft Crash Report ----|could not open .*jvm\.cfg|FAILED TO BIND TO PORT'
+    if (-not $LauncherExited -and $ConsoleText -notmatch $fatal) { return $null }
+
+    if ($ConsoleText -match 'Could not reserve enough space|Invalid maximum heap size|insufficient memory for the Java Runtime') {
+        return "The server asked for more memory than this PC can give it. Lower Max memory in Server Settings."
+    }
+    if ($ConsoleText -match 'OutOfMemoryError') {
+        return "The server ran out of memory while starting. Raise Max memory in Server Settings."
+    }
+    if ($ConsoleText -match 'UnsupportedClassVersionError|compiled by a more recent version of the Java') {
+        return "This modpack needs a different Java version. Set `$JavaVersion in the server's run.config.ps1 (17 for Minecraft 1.17-1.20.4, 21 for 1.20.5 and newer)."
+    }
+    if ($ConsoleText -match 'jvm\.cfg|could not find java\.dll') {
+        return "This server's Java install is broken. Start it again - Firekeep repairs Java on the next start."
+    }
+    if ($ConsoleText -match 'invalid dist DEDICATED_SERVER') {
+        if ($ConsoleText -match 'Mod File: .*[\/]mods[\/]([^\/\r\n]+\.jar)') {
+            return "A mod that only works in the game client stopped the server: $($Matches[1]). Move that file out of the server's mods folder and start again."
+        }
+        return "A mod that only works in the game client stopped the server. The crash report names it - move that mod out of the server's mods folder and start again."
+    }
+    if ($ConsoleText -match 'Mixin apply for mod ([\w-]+) failed') {
+        return "The mod '$($Matches[1])' failed to load on the server - it's probably client-only. Move it out of the server's mods folder and start again."
+    }
+    if ($ConsoleText -match "Mod ID: '([^']+)', Requested by: '([^']+)'") {
+        return "The mod '$($Matches[2])' needs '$($Matches[1])', which isn't in the server's mods folder."
+    }
+    if ($ConsoleText -match 'FAILED TO BIND TO PORT|Address already in use') {
+        return "The server's port is already in use - another server or program is using it. Stop that one first."
+    }
+    if ($ConsoleText -match 'session\.lock|already locked') {
+        return "This world is already open in another server window. Close that one first."
+    }
+    if ($ConsoleText -match 'agree to the EULA') {
+        return "The Minecraft EULA hasn't been accepted for this server (set eula=true in its eula.txt)."
+    }
+    if (-not $ConsoleText.Trim()) {
+        return "The server stopped before Minecraft even launched - usually no internet while downloading Java. Check your connection and try again."
+    }
+    return "The server crashed while starting."
+}

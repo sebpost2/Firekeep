@@ -122,7 +122,8 @@
 
     <!-- Hint -->
     <TextBlock Grid.Row="4" x:Name="HintText" Text=" " Foreground="{StaticResource MutedTextBrush}"
-               FontFamily="Segoe UI" FontSize="12" HorizontalAlignment="Center" Margin="0,12,0,0"/>
+               FontFamily="Segoe UI" FontSize="12" HorizontalAlignment="Center" Margin="0,12,0,0"
+               TextWrapping="Wrap" TextAlignment="Center" MaxWidth="440"/>
 
     <!-- Secondary actions -->
     <WrapPanel Grid.Row="5" Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,8,0,0">

@@ -48,6 +48,18 @@ try {
     Write-Warning "World backup failed ($($_.Exception.Message)) - starting anyway."
 }
 
+# Every launch below reads stdin from NUL and writes all output to
+# logs\firekeep-console.log:
+#  - NUL: Forge's run.bat ends with "pause", which otherwise leaves a hidden
+#    console waiting forever after the server stops, holding this folder open
+#    (it blocked deleting the server).
+#  - The log: the app launches this window hidden, so without it errors Java
+#    prints before Minecraft starts logging (wrong Java, too much memory) are
+#    lost. The app reads it to explain a failed start in plain words.
+# Paths are relative (we're inside this folder) so nothing needs quoting.
+$consoleLog = "logs\firekeep-console.log"
+New-Item -ItemType Directory -Force -Path (Join-Path $PSScriptRoot "logs") | Out-Null
+
 Push-Location $PSScriptRoot
 try {
     if ($UseModpackLauncher) {
@@ -57,17 +69,18 @@ try {
         # installing) already hardcode nogui themselves, so no extra arg there.
         $launcherScript = Get-ModpackLauncherScript -InstancePath $PSScriptRoot
         if ($launcherScript -eq "run.bat") {
-            cmd /c run.bat nogui
+            cmd /c ".\run.bat nogui <NUL >$consoleLog 2>&1"
         }
         elseif ($launcherScript) {
-            cmd /c $launcherScript
+            cmd /c ".\$launcherScript <NUL >$consoleLog 2>&1"
         }
         else {
             Write-Error "UseModpackLauncher is true but I couldn't find run.bat/start.bat/startserver.bat in $PSScriptRoot"
         }
     }
     else {
-        java "-Xms$MinRam" "-Xmx$MaxRam" @(Get-AikarFlags) -jar $ServerJar nogui
+        $javaArgs = @("-Xms$MinRam", "-Xmx$MaxRam") + (Get-AikarFlags) -join " "
+        cmd /c "java $javaArgs -jar `"$ServerJar`" nogui <NUL >$consoleLog 2>&1"
     }
 }
 finally {

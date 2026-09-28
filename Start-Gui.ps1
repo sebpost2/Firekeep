@@ -121,6 +121,9 @@ $script:syncingVerityCombos = $false
 $script:pendingStart    = $false
 $script:pendingStop     = $false
 $script:launchedProcess = $null  # the start-with-tunnel.ps1 wrapper process, for Cancel
+$script:launchTime      = $null  # when that launch began (to ignore the previous run's log)
+$script:consoleOffset   = 0      # how far Watch-ServerStartup has read logs\firekeep-console.log
+$script:startupFailureText = $null # why the last start failed, kept on screen until the next action
 $script:closingApp      = $false # true once Window.Closing has taken over to stop the server
 $script:okToClose       = $false # set right before we let the real close happen
 
@@ -239,7 +242,10 @@ function Sync-StatusDisplay {
         $serverCombo.IsEnabled = ($state -eq "Running" -or $state -eq "Stopped")
         $actionButton.IsEnabled = $btn.IsEnabled
         $actionButton.Content = $btn.Label
-        if ($state -eq "Running" -or $state -eq "Stopped") { $homeHintText.Text = " " }
+        if ($state -eq "Running") { $script:startupFailureText = $null }
+        if ($state -eq "Running" -or $state -eq "Stopped") {
+            $homeHintText.Text = if ($script:startupFailureText) { $script:startupFailureText } else { " " }
+        }
     }
 
     if ($script:selected -and $script:selected.Game -eq "Minecraft" -and (Test-VerityModPresent -InstancePath $script:selected.Path)) {
@@ -262,6 +268,7 @@ function Sync-StatusDisplay {
 $serverCombo.Add_SelectionChanged({
     if ($serverCombo.SelectedIndex -lt 0) { return }
     $script:selected = $script:instances[$serverCombo.SelectedIndex]
+    $script:startupFailureText = $null
     $script:pendingStart = $false
     $script:pendingStop = $false
     $verityApiKeyBox.Password = if ($script:selected.Game -eq "Minecraft" -and (Test-VerityModPresent -InstancePath $script:selected.Path)) {
@@ -310,6 +317,9 @@ $actionButton.Add_Click({
         )
     } else {
         $script:pendingStart = $true
+        $script:launchTime = Get-Date
+        $script:consoleOffset = 0
+        $script:startupFailureText = $null
         $actionButton.Content = "CANCEL"
         $homeHintText.Text = "Lighting it up..."
         $script:launchedProcess = Start-Process -FilePath "powershell.exe" -WindowStyle Hidden -PassThru -ArgumentList @(
@@ -1158,9 +1168,43 @@ $window.Add_Closing({
     }
 })
 
+# While a start is pending, watches logs\firekeep-console.log (written by
+# start.ps1) and the launcher process for the start failing - see
+# Get-StartupFailure. On failure it kills whatever's left of the launch
+# (some Forge crashes hang instead of exiting, holding the folder open) and
+# leaves a plain-language reason on the Home screen.
+function Watch-ServerStartup {
+    if (-not $script:pendingStart -or -not $script:launchedProcess -or -not $script:selected) { return }
+    if (Test-PortOpen -Port (Get-SelectedRconPort)) { return }   # it made it
+
+    $logPath = Join-Path $script:selected.Path "logs\firekeep-console.log"
+    # The previous run's file stays until this launch rewrites it; ignore it until then.
+    $fresh = (Test-Path $logPath) -and ((Get-Item $logPath).LastWriteTime -ge $script:launchTime)
+    $exited = $script:launchedProcess.HasExited
+    $newText = ""
+    if ($fresh) {
+        $chunk = Get-LogTailChunk -Path $logPath -Offset $script:consoleOffset
+        $script:consoleOffset = $chunk.Offset
+        $newText = $chunk.Text
+    }
+    if (-not $exited -and -not (Get-StartupFailure -ConsoleText $newText)) { return }
+
+    $fullText = if ($fresh) { (Get-LogTailChunk -Path $logPath -Offset 0).Text } else { "" }
+    $message = Get-StartupFailure -ConsoleText $fullText -LauncherExited $true
+    if (-not $exited) { Stop-ProcessTree -ProcessId $script:launchedProcess.Id }
+
+    $crash = Get-ChildItem -Path (Join-Path $script:selected.Path "crash-reports") -Filter "*.txt" -ErrorAction SilentlyContinue |
+        Where-Object { $_.LastWriteTime -ge $script:launchTime } | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    $details = if ($crash) { "crash-reports\$($crash.Name)" } elseif ($fresh) { "logs\firekeep-console.log" } else { $null }
+    $script:startupFailureText = if ($details) { "$message (Details: $details)" } else { $message }
+    $script:launchedProcess = $null
+    $script:pendingStart = $false
+}
+
 $timer = New-Object System.Windows.Threading.DispatcherTimer
 $timer.Interval = [TimeSpan]::FromSeconds(2)
 $timer.Add_Tick({
+    Watch-ServerStartup
     $state = Sync-StatusDisplay
     if ($state -eq "Running" -and $addressText.Text -eq "Checking...") { Update-AddressDisplay }
 

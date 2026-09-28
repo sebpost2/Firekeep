@@ -260,3 +260,79 @@ Describe "Get-AppVersion" {
 
     Remove-Item -Recurse -Force $root -ErrorAction SilentlyContinue
 }
+
+Describe "Get-StartupFailure" {
+
+    It "returns null while the server is still loading normally" {
+        Get-StartupFailure -ConsoleText "[main/INFO] Loading 356 mods" | Should Be $null
+    }
+
+    It "reports a generic crash when nothing more specific matches" {
+        $text = "[Server thread/ERROR] [net.minecraft.server.MinecraftServer/]: Failed to start the minecraft server"
+        Get-StartupFailure -ConsoleText $text | Should Match "crashed while starting"
+    }
+
+    # The Arcadia case: the process never exits after this, so the log text
+    # is the only signal that startup is over.
+    It "names the client-only mod behind an 'invalid dist' crash" {
+        $text = @(
+            "Attempted to load class net/minecraft/client/gui/screens/Screen for invalid dist DEDICATED_SERVER",
+            "-- MOD oculus --",
+            "Details:",
+            "`tMod File: /D:/3_Hobbies/GameServers/Minecraft/servers/Arcadia RPG/mods/oculus-mc1.20.1-1.8.0.jar",
+            "Failed to start the minecraft server"
+        ) -join "`n"
+        $msg = Get-StartupFailure -ConsoleText $text
+        $msg | Should Match "only works in the game client"
+        $msg | Should Match "oculus-mc1\.20\.1-1\.8\.0\.jar"
+    }
+
+    It "names the mod whose mixins failed to apply" {
+        $text = "Mixin apply for mod blur failed blur.mixins.json:MixinGameRenderer`nFailed to start the minecraft server"
+        Get-StartupFailure -ConsoleText $text | Should Match "'blur'"
+    }
+
+    It "explains a missing dependency" {
+        $text = "Missing or unsupported mandatory dependencies:`n`tMod ID: 'geckolib', Requested by: 'mowziesmobs', Expected range: '[4.4,)'`nFailed to start the minecraft server"
+        $msg = Get-StartupFailure -ConsoleText $text
+        $msg | Should Match "'mowziesmobs' needs 'geckolib'"
+    }
+
+    It "explains asking for more memory than the PC has" {
+        $text = "Error occurred during initialization of VM`nCould not reserve enough space for 20971520KB object heap"
+        Get-StartupFailure -ConsoleText $text | Should Match "Lower Max memory"
+    }
+
+    It "explains running out of memory" {
+        $text = "java.lang.OutOfMemoryError: Java heap space`nFailed to start the minecraft server"
+        Get-StartupFailure -ConsoleText $text | Should Match "Raise Max memory"
+    }
+
+    It "explains the wrong Java version" {
+        $text = "Error: LinkageError occurred while loading main class net.minecraft.server.Main`n`tjava.lang.UnsupportedClassVersionError: has been compiled by a more recent version of the Java Runtime`nError: Could not create the Java Virtual Machine."
+        Get-StartupFailure -ConsoleText $text | Should Match "different Java"
+    }
+
+    It "explains a broken Java install" {
+        $text = "Error: could not open 'D:\...\tools\java\17\lib\jvm.cfg'"
+        Get-StartupFailure -ConsoleText $text -LauncherExited $true | Should Match "Java install is broken"
+    }
+
+    It "explains a port that's already taken" {
+        $text = "**** FAILED TO BIND TO PORT!`nThe exception was: java.net.BindException: Address already in use: bind`nPerhaps a server is already running on that port?"
+        Get-StartupFailure -ConsoleText $text -LauncherExited $true | Should Match "already in use"
+    }
+
+    It "explains a world that's already open" {
+        $text = "Failed to load level`njava.nio.channels.OverlappingFileLockException ... session.lock: already locked (possibly by other Minecraft instance?)`nFailed to start the minecraft server"
+        Get-StartupFailure -ConsoleText $text | Should Match "already open"
+    }
+
+    It "explains an unaccepted EULA" {
+        Get-StartupFailure -ConsoleText "You need to agree to the EULA in order to run the server." -LauncherExited $true | Should Match "EULA"
+    }
+
+    It "reports a launcher that died before Minecraft wrote anything" {
+        Get-StartupFailure -ConsoleText "" -LauncherExited $true | Should Match "before Minecraft"
+    }
+}
