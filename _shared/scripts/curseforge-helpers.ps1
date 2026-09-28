@@ -94,3 +94,80 @@ function Install-CurseForgeServerZip {
         Remove-Item -Path $tmp -Recurse -Force -ErrorAction SilentlyContinue
     }
 }
+
+# ---- CurseForge client exports (manifest.json + overrides/) ----------------
+# See docs/superpowers/specs/2026-09-28-curseforge-client-import-design.md.
+
+Add-Type -AssemblyName System.IO.Compression, System.IO.Compression.FileSystem
+
+# Reads a zip entry as UTF-8 text.
+function Read-ZipEntryText {
+    param([Parameter(Mandatory = $true)]$Entry)
+    $reader = New-Object System.IO.StreamReader($Entry.Open(), [System.Text.Encoding]::UTF8)
+    try { return $reader.ReadToEnd() } finally { $reader.Dispose() }
+}
+
+# "ServerFiles" when the zip has a server launcher outside overrides/ (the
+# same markers Install-CurseForgeServerZip looks for), "ClientExport" when it
+# has a root manifest.json of type minecraftModpack and no launcher, $null
+# otherwise. Reads the entry list only - nothing is extracted.
+function Get-CurseForgeZipKind {
+    param([Parameter(Mandatory = $true)][string]$ZipPath)
+    $zip = [System.IO.Compression.ZipFile]::OpenRead($ZipPath)
+    try {
+        foreach ($entry in $zip.Entries) {
+            $name = $entry.FullName -replace '\\', '/'
+            if ($name -like "overrides/*") { continue }
+            $leaf = ($name -split '/')[-1]
+            if ($leaf -eq "variables.txt" -or $leaf -eq "run.bat" -or $leaf -eq "startserver.bat" -or
+                $leaf -match '^fabric-server-mc\.' -or $leaf -match '^forge-.*-installer\.jar$') {
+                return "ServerFiles"
+            }
+        }
+        $manifest = $zip.GetEntry("manifest.json")
+        if ($manifest) {
+            try { $json = Read-ZipEntryText $manifest | ConvertFrom-Json } catch { $json = $null }
+            if ($json -and $json.manifestType -eq "minecraftModpack") { return "ClientExport" }
+        }
+        return $null
+    } finally {
+        $zip.Dispose()
+    }
+}
+
+# Reads manifest.json from a client export. Forge only: any other loader
+# throws a message meant for the user, before anything is downloaded.
+# Optional files ("required": false) are left out - the CurseForge app
+# doesn't install them by default, so players won't have them.
+function Read-CurseForgeManifest {
+    param([Parameter(Mandatory = $true)][string]$ZipPath)
+    $zip = [System.IO.Compression.ZipFile]::OpenRead($ZipPath)
+    try {
+        $json = Read-ZipEntryText ($zip.GetEntry("manifest.json")) | ConvertFrom-Json
+    } finally {
+        $zip.Dispose()
+    }
+
+    $loaders = @($json.minecraft.modLoaders)
+    $loader = ($loaders | Where-Object { $_.primary } | Select-Object -First 1)
+    if (-not $loader) { $loader = $loaders | Select-Object -First 1 }
+    $loaderId = "$($loader.id)"
+    if ($loaderId -notmatch '^forge-(.+)$') {
+        $names = @{ neoforge = "NeoForge"; fabric = "Fabric"; quilt = "Quilt" }
+        $kind = ($loaderId -split '-')[0]
+        $label = if ($names.ContainsKey($kind)) { $names[$kind] } else { $kind }
+        throw "This modpack uses $label, which Firekeep can't import yet (Forge only for now)."
+    }
+    $forgeVersion = $Matches[1]
+
+    $files = @($json.files | Where-Object { $_.required -ne $false } | ForEach-Object {
+        [pscustomobject]@{ ProjectId = [int]$_.projectID; FileId = [int]$_.fileID }
+    })
+    $overrides = if ($json.overrides) { "$($json.overrides)" } else { "overrides" }
+    return [pscustomobject]@{
+        McVersion    = "$($json.minecraft.version)"
+        ForgeVersion = $forgeVersion
+        Files        = $files
+        OverridesDir = $overrides
+    }
+}
