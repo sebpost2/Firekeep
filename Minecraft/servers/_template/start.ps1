@@ -12,6 +12,7 @@ $gsRoot = Split-Path -Parent $mcRoot
 # set value only has to be right when detection can't figure it out itself.
 . (Join-Path $gsRoot "_shared\scripts\modloader-helpers.ps1")
 . (Join-Path $gsRoot "_shared\scripts\new-server-helpers.ps1")
+. (Join-Path $gsRoot "_shared\scripts\server-settings-helpers.ps1")
 $detectedJavaVersion = Get-DetectedJavaVersion -InstancePath $PSScriptRoot
 if ($detectedJavaVersion -and $detectedJavaVersion -ne $JavaVersion) {
     Write-Host "Detected Java $detectedJavaVersion from the modpack files (run.config.ps1 says $JavaVersion) - using $detectedJavaVersion for this start."
@@ -57,7 +58,7 @@ try {
         }
     }
     else {
-        java "-Xms$MinRam" "-Xmx$MaxRam" -jar $ServerJar nogui
+        java "-Xms$MinRam" "-Xmx$MaxRam" @(Get-AikarFlags) -jar $ServerJar nogui
     }
 }
 finally {

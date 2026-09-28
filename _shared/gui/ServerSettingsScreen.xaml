@@ -60,7 +60,11 @@
     <TextBox Grid.Row="10" x:Name="SpawnProtectionBox"/>
 
     <TextBlock Grid.Row="11" Text="Max memory (e.g. 6G)" Style="{StaticResource LabelStyle}"/>
-    <TextBox Grid.Row="12" x:Name="MaxRamBox"/>
+    <StackPanel Grid.Row="12">
+        <TextBox x:Name="MaxRamBox"/>
+        <TextBlock x:Name="MaxRamHintText" Text=" " Foreground="{StaticResource MutedTextBrush}"
+                   FontFamily="Segoe UI" FontSize="11" Margin="0,4,0,0" TextWrapping="Wrap"/>
+    </StackPanel>
 
     <Button Grid.Row="13" x:Name="AdvancedToggleButton" Content="Show advanced settings"
             Style="{StaticResource LinkButtonStyle}" HorizontalAlignment="Left" Margin="0,16,0,0"/>

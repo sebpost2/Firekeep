@@ -432,6 +432,7 @@ $maxPlayersBox           = $settingsRoot.FindName("MaxPlayersBox")
 $motdBox                 = $settingsRoot.FindName("MotdBox")
 $spawnProtectionBox      = $settingsRoot.FindName("SpawnProtectionBox")
 $maxRamBox               = $settingsRoot.FindName("MaxRamBox")
+$maxRamHintText          = $settingsRoot.FindName("MaxRamHintText")
 $advancedToggleButton    = $settingsRoot.FindName("AdvancedToggleButton")
 $advancedBox             = $settingsRoot.FindName("AdvancedBox")
 $advancedHintText        = $settingsRoot.FindName("AdvancedHintText")
@@ -533,8 +534,10 @@ function Enter-ServerSettingsScreen {
     $motdBox.Text = $curated["motd"]
     $spawnProtectionBox.Text = $curated["spawn-protection"]
 
-    $script:settingsConfigPath = Join-Path $script:selected.Path "run.config.ps1"
-    $maxRamBox.Text = Get-RunConfigMaxRam -Path $script:settingsConfigPath
+    $maxRamBox.Text = Get-ServerMaxRam -InstancePath $script:selected.Path
+    $modCount = @(Get-ChildItem -Path (Join-Path $script:selected.Path "mods") -Filter "*.jar" -ErrorAction SilentlyContinue).Count
+    $totalRam = Get-TotalRamGB
+    $maxRamHintText.Text = "Suggested: $(Get-SuggestedMaxRam -TotalRamGB $totalRam -ModCount $modCount) ($modCount mods, $totalRam GB in this PC)"
 
     $advancedBox.Text = Get-AdvancedPropertiesText -Path $script:settingsPropsPath
     $advancedBox.Visibility = "Collapsed"
@@ -580,13 +583,20 @@ $saveSettingsButton.Add_Click({
     Set-ServerProperty $script:settingsPropsPath "spawn-protection" (ConvertTo-ClampedInt -Value $spawnProtectionBox.Text -FallbackValue $curated["spawn-protection"])
 
     $maxRam = $maxRamBox.Text.Trim()
-    if (-not $maxRam) { $maxRam = Get-RunConfigMaxRam -Path $script:settingsConfigPath }
-    Set-RunConfigMaxRam -Path $script:settingsConfigPath -MaxRam $maxRam
+    if (-not $maxRam) { $maxRam = Get-ServerMaxRam -InstancePath $script:selected.Path }
+    $maxRamGB = ConvertTo-RamGB $maxRam
+    if ($null -eq $maxRamGB -or $maxRamGB -lt 1) {
+        $settingsHintText.Text = "Max memory should look like 6G (or 6144M). Nothing was saved."
+        return
+    }
+    Set-ServerMaxRam -InstancePath $script:selected.Path -MaxRam $maxRam
 
     Save-AdvancedPropertiesLines -Path $script:settingsPropsPath -Text $advancedBox.Text
 
     Enter-ServerSettingsScreen
-    $settingsHintText.Text = "Saved."
+    $settingsHintText.Text = if ($maxRamGB -gt (Get-TotalRamGB) - 2) {
+        "Saved - but $maxRam leaves Windows under 2 GB on this PC, which can make everything lag. Try the suggested value."
+    } else { "Saved." }
 })
 
 $trashToggleButton.Add_Click({
@@ -768,7 +778,8 @@ function Reset-ModpackDropZoneVisual {
 function Enter-AddServerScreen {
     $nameBox.Text = ""
     $mrpackBox.Text = ""
-    $ramBox.Text = "6G"
+    # The pack's mod count isn't known yet; 150 is a typical modpack.
+    $ramBox.Text = Get-SuggestedMaxRam -TotalRamGB (Get-TotalRamGB) -ModCount 150
     $eulaCheck.IsChecked = $false
     $addHintText.Text = " "
     Update-ModpackDropZoneDisplay
@@ -883,6 +894,10 @@ $createButton.Add_Click({
                 Set-RunConfigJavaAndRam -Path (Join-Path $dest "run.config.ps1") -JavaVersion $javaVersion -MaxRam $MaxRam
             }
         }
+
+        # Everywhere the server's launcher reads memory from, not just run.config.ps1.
+        . (Join-Path $GsRoot "_shared\scripts\server-settings-helpers.ps1")
+        Set-ServerMaxRam -InstancePath $dest -MaxRam $MaxRam
 
         Set-Content -Path (Join-Path $dest "eula.txt") -Value "eula=true" -Encoding ascii
         return $Name
