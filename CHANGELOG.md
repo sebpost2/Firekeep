@@ -3,6 +3,15 @@
 All notable changes to this project are documented here. Loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Added
+- Add Server imports regular CurseForge modpack downloads (Forge), not just
+  "Server Files": downloads the mods itself, copies the pack's settings
+  with a byte-for-byte check, and installs Forge. Mods that can't be
+  downloaded are listed with links (Start waits until they're added), and a
+  mod the server refuses to load can be moved aside with one click.
+
 ## [1.1.0] - 2026-09-28
 
 ### Added

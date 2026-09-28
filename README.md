@@ -57,10 +57,18 @@ extract it anywhere, and double-click `Start.bat`.
 
 **From [CurseForge](https://www.curseforge.com):**
 
-1. Go to the modpack's page, the **"Files"** tab, and download the
-   **"Server Files"** package for the version you want (not the regular
-   modpack download — that's for a client, not a server).
+1. Go to the modpack's page, the **"Files"** tab, and download either the
+   **"Server Files"** package or the regular modpack download (the one the
+   CurseForge app uses) - Firekeep handles both.
 2. Drag that `.zip` onto the Modpack field, or browse for it.
+
+   With the regular modpack download, Firekeep downloads every mod itself
+   (a few minutes for big packs). If a mod's author doesn't allow that,
+   Home shows **Show missing mods** with a link to each one - put those
+   files in the server's `mods` folder and press Start. If the server
+   refuses to start because of a mod that only works in the game (not on a
+   server), Home names it and offers **Move it aside and start again**.
+   Only Forge modpacks can be imported this way for now.
 
 > **Important:** automatic installation currently only works with **Fabric**
 > `.mrpack` modpacks. If the `.mrpack` is Forge, Quilt, or NeoForge, it'll
