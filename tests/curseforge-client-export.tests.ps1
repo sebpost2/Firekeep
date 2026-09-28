@@ -290,3 +290,62 @@ Describe "Invoke-ParallelDownload + Save-UrlToFile" {
         } finally { Stop-FakeCurseForge $fake; Remove-Item -Recurse -Force $dest }
     }
 }
+
+Describe "Write-MissingModsFile / Get-MissingModDownloads" {
+
+    function New-Instance { $d = Join-Path $env:TEMP ("cf-inst-" + [Guid]::NewGuid().ToString("N")); New-Item -ItemType Directory -Path (Join-Path $d "mods") -Force | Out-Null; return $d }
+
+    It "lists each mod with its page and download link" {
+        $dir = New-Instance
+        try {
+            Write-MissingModsFile -InstancePath $dir -Entries @([pscustomobject]@{ FileName = "Blocked-1.0.jar"; ProjectId = 336184; FileId = 5600004 })
+            $text = Get-Content (Join-Path $dir "MISSING-MODS.txt") -Raw
+            $text | Should Match "Blocked-1\.0\.jar"
+            $text | Should Match "https://www\.curseforge\.com/projects/336184"
+            $text | Should Match "https://www\.curseforge\.com/api/v1/mods/336184/files/5600004/download"
+        } finally { Remove-Item -Recurse -Force $dir }
+    }
+
+    It "keeps reporting a mod until its exact jar is in mods" {
+        $dir = New-Instance
+        try {
+            Write-MissingModsFile -InstancePath $dir -Entries @(
+                [pscustomobject]@{ FileName = "A-1.0.jar"; ProjectId = 1; FileId = 10 },
+                [pscustomobject]@{ FileName = "[1.20.1]B.jar"; ProjectId = 2; FileId = 20 })
+            @(Get-MissingModDownloads -InstancePath $dir).Count | Should Be 2
+            Set-Content -Path (Join-Path $dir "mods\A-1.1.jar") -Value "other version"
+            @(Get-MissingModDownloads -InstancePath $dir).Count | Should Be 2
+            Set-Content -Path (Join-Path $dir "mods\A-1.0.jar") -Value "right"
+            $left = @(Get-MissingModDownloads -InstancePath $dir)
+            $left.Count | Should Be 1
+            $left[0].FileName | Should Be "[1.20.1]B.jar"
+        } finally { Remove-Item -Recurse -Force $dir }
+    }
+
+    # Review focus 4.
+    It "deletes the list once everything is in place, including bracketed names" {
+        $dir = New-Instance
+        try {
+            Write-MissingModsFile -InstancePath $dir -Entries @([pscustomobject]@{ FileName = "[1.20.1]B.jar"; ProjectId = 2; FileId = 20 })
+            [System.IO.File]::WriteAllText((Join-Path $dir "mods\[1.20.1]B.jar"), "jar")
+            @(Get-MissingModDownloads -InstancePath $dir).Count | Should Be 0
+            Test-Path (Join-Path $dir "MISSING-MODS.txt") | Should Be $false
+        } finally { Remove-Item -Recurse -Force $dir }
+    }
+
+    It "keeps a mod whose name was never found until the list is edited by hand" {
+        $dir = New-Instance
+        try {
+            Write-MissingModsFile -InstancePath $dir -Entries @([pscustomobject]@{ FileName = $null; ProjectId = 9; FileId = 90 })
+            $left = @(Get-MissingModDownloads -InstancePath $dir)
+            $left.Count | Should Be 1
+            $left[0].FileName | Should Be $null
+            $left[0].ProjectId | Should Be 9
+        } finally { Remove-Item -Recurse -Force $dir }
+    }
+
+    It "returns nothing when there's no list" {
+        $dir = New-Instance
+        try { @(Get-MissingModDownloads -InstancePath $dir).Count | Should Be 0 } finally { Remove-Item -Recurse -Force $dir }
+    }
+}

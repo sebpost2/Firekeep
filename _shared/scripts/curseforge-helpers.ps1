@@ -348,3 +348,57 @@ function Invoke-ParallelDownload {
         $pool.Dispose()
     }
 }
+
+# MISSING-MODS.txt: mods an import couldn't download, for the user to fetch
+# by hand. Human-readable; each block starts with a "mod:" line that code
+# reads back ("mod: ? (project P, file F)" when the name was never found).
+function Write-MissingModsFile {
+    param(
+        [Parameter(Mandatory = $true)][string]$InstancePath,
+        [Parameter(Mandatory = $true)][object[]]$Entries
+    )
+    $lines = @(
+        "These mods couldn't be downloaded automatically.",
+        "Download each one from its link and put the .jar file in this server's",
+        "'mods' folder, then press Start again. The version must be exactly the",
+        "one named here, or players won't be able to join.",
+        ""
+    )
+    foreach ($e in $Entries) {
+        $label = if ($e.FileName) { $e.FileName } else { "? (project $($e.ProjectId), file $($e.FileId))" }
+        $lines += "mod: $label"
+        $lines += "  page:     https://www.curseforge.com/projects/$($e.ProjectId)"
+        $lines += "  download: https://www.curseforge.com/api/v1/mods/$($e.ProjectId)/files/$($e.FileId)/download"
+        $lines += ""
+    }
+    [System.IO.File]::WriteAllLines((Join-Path $InstancePath "MISSING-MODS.txt"), [string[]]$lines, (New-Object System.Text.UTF8Encoding($false)))
+}
+
+# The entries of MISSING-MODS.txt whose exact jar isn't in mods\ yet. Once
+# none are left the list is deleted, so Start stops being blocked. A
+# different version of a mod doesn't count - players must match exactly.
+function Get-MissingModDownloads {
+    param([Parameter(Mandatory = $true)][string]$InstancePath)
+    $listPath = Join-Path $InstancePath "MISSING-MODS.txt"
+    if (-not (Test-Path -LiteralPath $listPath)) { return @() }
+
+    $entries = @()
+    $current = $null
+    foreach ($line in [System.IO.File]::ReadAllLines($listPath)) {
+        if ($line -match '^mod: \? \(project (\d+), file (\d+)\)$') {
+            $current = [pscustomobject]@{ FileName = $null; ProjectId = [int]$Matches[1]; FileId = [int]$Matches[2] }
+            $entries += $current
+        } elseif ($line -match '^mod: (.+)$') {
+            $current = [pscustomobject]@{ FileName = $Matches[1]; ProjectId = 0; FileId = 0 }
+            $entries += $current
+        } elseif ($current -and $line -match '/api/v1/mods/(\d+)/files/(\d+)/download') {
+            $current.ProjectId = [int]$Matches[1]
+            $current.FileId = [int]$Matches[2]
+        }
+    }
+
+    $modsDir = Join-Path $InstancePath "mods"
+    $missing = @($entries | Where-Object { -not $_.FileName -or -not (Test-Path -LiteralPath (Join-Path $modsDir $_.FileName)) })
+    if ($missing.Count -eq 0) { Remove-Item -LiteralPath $listPath -Force }
+    return $missing
+}
