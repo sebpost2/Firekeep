@@ -72,3 +72,4 @@ finally {
 }
 
 Write-Host "Java $MajorVersion installed at $javaDir"
+exit 0   # explicit: callers check $LASTEXITCODE, which a native call above may have left set

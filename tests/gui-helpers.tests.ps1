@@ -394,3 +394,105 @@ Describe "Update-ServerStartScript" {
         }
     }
 }
+
+Describe "Get-LaunchLockState" {
+
+    # A fake server whose start-with-tunnel.ps1 runs $Body, launched hidden
+    # the way the GUI does; its PID goes into .starting.lock like the real one.
+    function Start-FakeLaunch([string]$Body) {
+        $dir = Join-Path $env:TEMP ("lock-state-" + [Guid]::NewGuid().ToString("N"))
+        New-Item -ItemType Directory -Path $dir | Out-Null
+        Set-Content -Path (Join-Path $dir "start-with-tunnel.ps1") -Value $Body
+        $p = Start-Process powershell.exe -WindowStyle Hidden -PassThru -ArgumentList "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "`"$dir\start-with-tunnel.ps1`""
+        Set-Content -Path (Join-Path $dir ".starting.lock") -Value $p.Id -NoNewline
+        return [PSCustomObject]@{ Dir = $dir; Pid = $p.Id }
+    }
+
+    function Wait-ForChild([int]$ParentId, [string]$Name) {
+        for ($i = 0; $i -lt 50; $i++) {
+            if (Get-CimInstance Win32_Process -Filter "ParentProcessId = $ParentId AND Name = '$Name'") { return }
+            Start-Sleep -Milliseconds 100
+        }
+    }
+
+    function Remove-FakeLaunch($launch) {
+        Stop-ProcessTree -ProcessId $launch.Pid
+        Start-Sleep -Milliseconds 300
+        Remove-Item -Recurse -Force $launch.Dir -ErrorAction SilentlyContinue
+    }
+
+    It "returns null when there's no lock" {
+        $dir = Join-Path $env:TEMP ("lock-state-" + [Guid]::NewGuid().ToString("N"))
+        New-Item -ItemType Directory -Path $dir | Out-Null
+        Get-LaunchLockState -InstancePath $dir | Should Be $null
+        Remove-Item -Recurse -Force $dir
+    }
+
+    It "calls a lock stale when its launcher is gone" {
+        $dir = Join-Path $env:TEMP ("lock-state-" + [Guid]::NewGuid().ToString("N"))
+        New-Item -ItemType Directory -Path $dir | Out-Null
+        $gone = Start-Process cmd.exe -ArgumentList "/c", "exit" -WindowStyle Hidden -PassThru
+        $gone.WaitForExit()
+        Set-Content -Path (Join-Path $dir ".starting.lock") -Value $gone.Id -NoNewline
+        (Get-LaunchLockState -InstancePath $dir).Kind | Should Be "Stale"
+        Remove-Item -Recurse -Force $dir
+    }
+
+    # Windows reuses PIDs: a live process that isn't this server's launcher
+    # must not block the server from starting.
+    It "calls a lock stale when its PID now belongs to something else" {
+        $dir = Join-Path $env:TEMP ("lock-state-" + [Guid]::NewGuid().ToString("N"))
+        New-Item -ItemType Directory -Path $dir | Out-Null
+        Set-Content -Path (Join-Path $dir ".starting.lock") -Value $PID -NoNewline
+        (Get-LaunchLockState -InstancePath $dir).Kind | Should Be "Stale"
+        Remove-Item -Recurse -Force $dir
+    }
+
+    # Last night's Arcadia launcher: the server had stopped, but run.bat's
+    # "pause" kept cmd.exe (and the lock) alive for hours.
+    It "spots a launcher left waiting at 'pause' after its server stopped" {
+        $launch = Start-FakeLaunch "cmd /c pause"
+        try {
+            Wait-ForChild $launch.Pid "cmd.exe"
+            $state = Get-LaunchLockState -InstancePath $launch.Dir
+            $state.Kind | Should Be "Leftover"
+            $state.Pid | Should Be $launch.Pid
+        } finally { Remove-FakeLaunch $launch }
+    }
+
+    It "leaves alone a launcher that's still preparing (no cmd.exe yet)" {
+        $launch = Start-FakeLaunch "Start-Sleep -Seconds 60"
+        try {
+            Start-Sleep -Seconds 1
+            (Get-LaunchLockState -InstancePath $launch.Dir).Kind | Should Be "Starting"
+        } finally { Remove-FakeLaunch $launch }
+    }
+
+    It "leaves alone a launcher whose server (java.exe) is running" {
+        $fakeJava = Join-Path $env:TEMP ("fakejava-" + [Guid]::NewGuid().ToString("N"))
+        New-Item -ItemType Directory -Path $fakeJava | Out-Null
+        Copy-Item (Join-Path $env:SystemRoot "System32\PING.EXE") (Join-Path $fakeJava "java.exe")
+        $launch = Start-FakeLaunch "cmd /c `"`"$fakeJava\java.exe`" -n 60 127.0.0.1`""
+        try {
+            Wait-ForChild $launch.Pid "cmd.exe"
+            $cmd = Get-CimInstance Win32_Process -Filter "ParentProcessId = $($launch.Pid) AND Name = 'cmd.exe'"
+            Wait-ForChild $cmd.ProcessId "java.exe"
+            (Get-LaunchLockState -InstancePath $launch.Dir).Kind | Should Be "Starting"
+        } finally {
+            Remove-FakeLaunch $launch
+            Remove-Item -Recurse -Force $fakeJava -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+Describe "Get-StartupFailure (before Minecraft launches)" {
+    It "says Java couldn't be installed when start.ps1 reports that" {
+        $text = "Firekeep: installing Java 17 failed: Could not get the link/checksum for Java 17 from Adoptium."
+        Get-StartupFailure -ConsoleText $text -LauncherExited $true | Should Match "couldn't install Java 17"
+    }
+
+    # It used to guess "no internet", which sent people looking in the wrong place.
+    It "doesn't guess a cause when nothing was captured" {
+        Get-StartupFailure -ConsoleText "" -LauncherExited $true | Should Not Match "internet"
+    }
+}

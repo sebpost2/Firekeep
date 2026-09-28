@@ -189,6 +189,9 @@ function Get-StartupFailure {
     $fatal = 'Failed to start the minecraft server|Could not create the Java Virtual Machine|Error occurred during initialization of VM|---- Minecraft Crash Report ----|could not open .*jvm\.cfg|FAILED TO BIND TO PORT'
     if (-not $LauncherExited -and $ConsoleText -notmatch $fatal) { return $null }
 
+    if ($ConsoleText -match 'Firekeep: installing Java (\d+) failed') {
+        return "Firekeep couldn't install Java $($Matches[1]) for this server - check the internet connection and try again."
+    }
     if ($ConsoleText -match 'Could not reserve enough space|Invalid maximum heap size|insufficient memory for the Java Runtime') {
         return "The server asked for more memory than this PC can give it. Lower Max memory in Server Settings."
     }
@@ -223,7 +226,7 @@ function Get-StartupFailure {
         return "The Minecraft EULA hasn't been accepted for this server (set eula=true in its eula.txt)."
     }
     if (-not $ConsoleText.Trim()) {
-        return "The server stopped before Minecraft even launched - usually no internet while downloading Java. Check your connection and try again."
+        return "The server stopped before Minecraft launched. Try Start again; if it keeps happening, run start-with-tunnel.ps1 from the server's folder to see the error."
     }
     return "The server crashed while starting."
 }
@@ -255,6 +258,7 @@ function Get-PastTemplateStartHashes {
         "9f474def415bd36b3aae96f2c72de1beec7566acabdb76bde58101d975c9f9b5"  # 2130afe RCON defaults
         "df7ee009698997d3f7cbee6492b04a4ad45548a72be9030b57d5845c1de63b1d"  # 58a31e8 GC flags
         "c7fc6ba1cdad735cd0f566fb6468cc3adf4f96ef8a1342566c355d9932635ad6"  # b95fa5d backups
+        "8529e1bdb60d5785d879eda53019aa948bf12fdd0bcd61afd6cf8a8949f715f3"  # 955b455 console capture
     )
 }
 
@@ -275,4 +279,42 @@ function Update-ServerStartScript {
     if ((Get-PastTemplateStartHashes) -notcontains $fingerprint) { return $false }
     Copy-Item -Path $TemplatePath -Destination $target -Force
     return $true
+}
+
+# Who holds a server's .starting.lock (start-with-tunnel.ps1 writes its PID
+# there and refuses to launch while that process is alive). Returns $null
+# when there's no lock, else Kind:
+#   Stale    - the PID is gone or now belongs to some other program; the
+#              lock is safe to delete.
+#   Leftover - the launcher is alive but only a cmd.exe is left under it, no
+#              Java: the server has stopped and run.bat's "pause" is waiting
+#              for a key nobody will press (servers on an older or custom
+#              start.ps1). Safe to kill - no world is open.
+#   Starting - a real launch in progress (still preparing, so no cmd.exe
+#              yet, or Java is running). Leave it alone.
+function Get-LaunchLockState {
+    param([Parameter(Mandatory = $true)][string]$InstancePath)
+    $lockPath = Join-Path $InstancePath ".starting.lock"
+    if (-not (Test-Path $lockPath)) { return $null }
+    $raw = "$(Get-Content -Path $lockPath -Raw -ErrorAction SilentlyContinue)".Trim()
+    if ($raw -notmatch '^\d+$') { return [PSCustomObject]@{ Kind = "Stale"; Pid = $null } }
+    $launcherPid = [int]$raw
+
+    $processes = @(Get-CimInstance Win32_Process)
+    $launcher = $processes | Where-Object { $_.ProcessId -eq $launcherPid }
+    $ownScript = Join-Path $InstancePath "start-with-tunnel.ps1"
+    if (-not $launcher -or "$($launcher.CommandLine)" -notlike "*$ownScript*") {
+        return [PSCustomObject]@{ Kind = "Stale"; Pid = $launcherPid }
+    }
+
+    $descendants = @()
+    $frontier = @($launcherPid)
+    while ($frontier.Count -gt 0) {
+        $children = @($processes | Where-Object { $frontier -contains $_.ParentProcessId })
+        $descendants += $children
+        $frontier = @($children | ForEach-Object { $_.ProcessId })
+    }
+    $names = @($descendants | ForEach-Object { $_.Name.ToLower() })
+    $leftover = ($names -contains "cmd.exe") -and -not ($names -contains "java.exe" -or $names -contains "javaw.exe")
+    return [PSCustomObject]@{ Kind = $(if ($leftover) { "Leftover" } else { "Starting" }); Pid = $launcherPid }
 }

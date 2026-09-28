@@ -24,8 +24,24 @@ $javaHome = Join-Path $mcRoot "tools\java\$JavaVersion"
 $javaBin = Join-Path $javaHome "bin"
 
 # Always run the installer: it returns right away when Java works, and
-# repairs it when it's missing or broken (e.g. half-extracted).
-& (Join-Path $mcRoot "scripts\install-java.ps1") -MajorVersion $JavaVersion
+# repairs it when it's missing or broken (e.g. half-extracted). If it fails,
+# say so in logs\firekeep-console.log (the file the app reads to explain a
+# failed start - see below), since this window runs hidden.
+try {
+    $javaOutput = & (Join-Path $mcRoot "scripts\install-java.ps1") -MajorVersion $JavaVersion 2>&1
+    $javaOk = ($LASTEXITCODE -eq 0)
+} catch {
+    $javaOutput = $_
+    $javaOk = $false
+}
+if (-not $javaOk) {
+    New-Item -ItemType Directory -Force -Path (Join-Path $PSScriptRoot "logs") | Out-Null
+    $messages = $javaOutput | ForEach-Object { if ($_ -is [System.Management.Automation.ErrorRecord]) { $_.Exception.Message } else { "$_" } }
+    $reason = "Firekeep: installing Java $JavaVersion failed: $($messages -join ' ')"
+    [System.IO.File]::WriteAllText((Join-Path $PSScriptRoot "logs\firekeep-console.log"), $reason, (New-Object System.Text.UTF8Encoding($false)))
+    Write-Error $reason
+    exit 1
+}
 
 $env:PATH = "$javaBin;$env:PATH"
 $env:JAVA_HOME = $javaHome

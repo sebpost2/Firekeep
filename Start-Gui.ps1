@@ -303,6 +303,19 @@ $actionButton.Add_Click({
     }
     if ($state -ne "Stopped" -and $state -ne "Running") { return }
 
+    if ($state -eq "Stopped") {
+        # An earlier launch can still hold this server's .starting.lock, and
+        # the launcher then refuses to start (invisibly - it runs hidden).
+        $lock = Get-LaunchLockState -InstancePath $script:selected.Path
+        if ($lock -and $lock.Kind -eq "Starting") {
+            $script:startupFailureText = "This server is already starting in another window - give it a minute."
+            $homeHintText.Text = $script:startupFailureText
+            return
+        }
+        if ($lock -and $lock.Kind -eq "Leftover") { Stop-ProcessTree -ProcessId $lock.Pid }
+        if ($lock) { Remove-Item -Path (Join-Path $script:selected.Path ".starting.lock") -Force -ErrorAction SilentlyContinue }
+    }
+
     $serverCombo.IsEnabled = $false
     $actionButton.IsEnabled = $false
 
