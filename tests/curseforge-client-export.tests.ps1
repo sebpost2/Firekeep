@@ -164,3 +164,129 @@ Describe "Test-ZipEntryMatchesFile" {
         } finally { $archive.Dispose(); Remove-Item $zip; Remove-Item -Recurse -Force $dest }
     }
 }
+
+# Fake CurseForge + CDN on localhost. HEAD/GET /api/v1/mods/<p>/files/<f>/download
+# answers 307 to /files/<escaped name>; GET /files/<name> serves the body, or
+# 500 for the first FailTimes[name] requests. Single-threaded on purpose.
+function Start-FakeCurseForge {
+    param([hashtable]$Files, [hashtable]$FailTimes = @{})
+    $probe = New-Object System.Net.Sockets.TcpListener([System.Net.IPAddress]::Loopback, 0)
+    $probe.Start(); $port = $probe.LocalEndpoint.Port; $probe.Stop()
+    $base = "http://localhost:$port"
+    $http = New-Object System.Net.HttpListener
+    $http.Prefixes.Add("$base/")
+    $http.Start()
+    $hits = [hashtable]::Synchronized(@{})
+    $ps = [powershell]::Create()
+    $ps.AddScript({
+        param($http, $files, $failTimes, $hits, $base)
+        while ($http.IsListening) {
+            try { $ctx = $http.GetContext() } catch { break }
+            $path = $ctx.Request.Url.AbsolutePath
+            $res = $ctx.Response
+            if ($path -match '^/api/v1/mods/(\d+)/files/(\d+)/download$' -and $files.ContainsKey("$($Matches[1])/$($Matches[2])")) {
+                $res.StatusCode = 307
+                $res.RedirectLocation = "$base/files/" + [Uri]::EscapeDataString($files["$($Matches[1])/$($Matches[2])"].Name) + "?api-key=test"
+            } elseif ($path -match '^/files/(.+)$') {
+                $name = [Uri]::UnescapeDataString($Matches[1])
+                $hits[$name] = 1 + [int]$hits[$name]
+                $body = $null
+                foreach ($f in $files.Values) { if ($f.Name -eq $name) { $body = $f.Body } }
+                if ($null -eq $body -or $hits[$name] -le [int]$failTimes[$name]) {
+                    $res.StatusCode = 500
+                } else {
+                    $res.ContentLength64 = $body.Length
+                    $res.OutputStream.Write($body, 0, $body.Length)
+                }
+            } else {
+                $res.StatusCode = 404
+            }
+            $res.Close()
+        }
+    }).AddArgument($http).AddArgument($Files).AddArgument($FailTimes).AddArgument($hits).AddArgument($base) | Out-Null
+    $null = $ps.BeginInvoke()
+    return [pscustomobject]@{ BaseUrl = $base; Http = $http; PS = $ps; Hits = $hits }
+}
+
+function Stop-FakeCurseForge($fake) {
+    $fake.Http.Stop()
+    $fake.Http.Close()
+    $fake.PS.Stop()
+    $fake.PS.Dispose()
+}
+
+function Get-Bytes([string]$Text) { return [System.Text.Encoding]::UTF8.GetBytes($Text) }
+
+Describe "Resolve-CurseForgeFile" {
+    # Review focus 4: names with spaces are URL-encoded in the redirect.
+    It "reads the decoded file name from the redirect without downloading it" {
+        $fake = Start-FakeCurseForge -Files @{ "7/70" = @{ Name = "Oh The Biomes You'll Go-1.0.jar"; Body = (Get-Bytes "jar") } }
+        try {
+            $r = Resolve-CurseForgeFile -ProjectId 7 -FileId 70 -BaseUrl $fake.BaseUrl
+            $r.FileName | Should Be "Oh The Biomes You'll Go-1.0.jar"
+            $r.Url | Should Match "^$([regex]::Escape($fake.BaseUrl))/files/"
+            $fake.Hits.Count | Should Be 0
+        } finally { Stop-FakeCurseForge $fake }
+    }
+
+    It "throws for a file CurseForge doesn't know" {
+        $fake = Start-FakeCurseForge -Files @{}
+        try { { Resolve-CurseForgeFile -ProjectId 1 -FileId 2 -BaseUrl $fake.BaseUrl } | Should Throw "404" } finally { Stop-FakeCurseForge $fake }
+    }
+}
+
+Describe "Invoke-ParallelDownload + Save-UrlToFile" {
+
+    function New-Dest { $d = Join-Path $env:TEMP ("cf-dl-" + [Guid]::NewGuid().ToString("N")); New-Item -ItemType Directory -Path $d | Out-Null; return $d }
+    $download = { param($i) Save-UrlToFile -Url $i.Url -Path $i.Path }
+
+    It "downloads every file intact, several at a time" {
+        $files = @{}
+        for ($n = 1; $n -le 10; $n++) { $files["$n/$n"] = @{ Name = "mod$n.jar"; Body = (Get-Bytes ("body-$n" * 100)) } }
+        $fake = Start-FakeCurseForge -Files $files
+        $dest = New-Dest
+        try {
+            $items = 1..10 | ForEach-Object { [pscustomobject]@{ Url = "$($fake.BaseUrl)/files/mod$_.jar"; Path = (Join-Path $dest "mod$_.jar") } }
+            $results = Invoke-ParallelDownload -Items $items -Work $download -Functions @("Save-UrlToFile") -Activity "Downloading mods"
+            @($results | Where-Object { -not $_.Ok }).Count | Should Be 0
+            [System.IO.File]::ReadAllText((Join-Path $dest "mod7.jar")) | Should Be ("body-7" * 100)
+            $results[3].Item.Path | Should Be (Join-Path $dest "mod4.jar")
+        } finally { Stop-FakeCurseForge $fake; Remove-Item -Recurse -Force $dest }
+    }
+
+    It "keeps a file that fails twice and then works" {
+        $fake = Start-FakeCurseForge -Files @{ "1/1" = @{ Name = "flaky.jar"; Body = (Get-Bytes "ok") } } -FailTimes @{ "flaky.jar" = 2 }
+        $dest = New-Dest
+        try {
+            $items = @([pscustomobject]@{ Url = "$($fake.BaseUrl)/files/flaky.jar"; Path = (Join-Path $dest "flaky.jar") })
+            $results = Invoke-ParallelDownload -Items $items -Work $download -Functions @("Save-UrlToFile") -Retries 3
+            $results[0].Ok | Should Be $true
+            $fake.Hits["flaky.jar"] | Should Be 3
+        } finally { Stop-FakeCurseForge $fake; Remove-Item -Recurse -Force $dest }
+    }
+
+    It "reports a file that always fails, leaving no jar or .part behind" {
+        $fake = Start-FakeCurseForge -Files @{ "1/1" = @{ Name = "blocked.jar"; Body = (Get-Bytes "x") } } -FailTimes @{ "blocked.jar" = 99 }
+        $dest = New-Dest
+        try {
+            $items = @([pscustomobject]@{ Url = "$($fake.BaseUrl)/files/blocked.jar"; Path = (Join-Path $dest "blocked.jar") })
+            $results = Invoke-ParallelDownload -Items $items -Work $download -Functions @("Save-UrlToFile") -Retries 3
+            $results[0].Ok | Should Be $false
+            $results[0].Error | Should Match "500"
+            @(Get-ChildItem $dest).Count | Should Be 0
+        } finally { Stop-FakeCurseForge $fake; Remove-Item -Recurse -Force $dest }
+    }
+
+    # Review focus 4.
+    It "saves names with square brackets" {
+        $fake = Start-FakeCurseForge -Files @{ "1/1" = @{ Name = "[1.20.1]Mod.jar"; Body = (Get-Bytes "b") } }
+        $dest = New-Dest
+        try {
+            $url = "$($fake.BaseUrl)/files/" + [Uri]::EscapeDataString("[1.20.1]Mod.jar")
+            $items = @([pscustomobject]@{ Url = $url; Path = (Join-Path $dest "[1.20.1]Mod.jar") })
+            $results = Invoke-ParallelDownload -Items $items -Work $download -Functions @("Save-UrlToFile")
+            $results[0].Ok | Should Be $true
+            Test-Path -LiteralPath (Join-Path $dest "[1.20.1]Mod.jar") | Should Be $true
+        } finally { Stop-FakeCurseForge $fake; Remove-Item -Recurse -Force $dest }
+    }
+}

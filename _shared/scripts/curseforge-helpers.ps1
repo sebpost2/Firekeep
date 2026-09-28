@@ -234,3 +234,117 @@ function Expand-ZipFolderVerified {
         $zip.Dispose()
     }
 }
+
+# Asks CurseForge where a file lives without downloading it: the download
+# endpoint answers 307 with the CDN URL, whose last segment is the real file
+# name (so non-jar files can be skipped before downloading anything).
+# -BaseUrl exists for tests.
+function Resolve-CurseForgeFile {
+    param(
+        [Parameter(Mandatory = $true)][int]$ProjectId,
+        [Parameter(Mandatory = $true)][int]$FileId,
+        [string]$BaseUrl = "https://www.curseforge.com"
+    )
+    [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor [System.Net.SecurityProtocolType]::Tls12
+    $request = [System.Net.HttpWebRequest]::Create("$BaseUrl/api/v1/mods/$ProjectId/files/$FileId/download")
+    $request.Method = "HEAD"
+    $request.AllowAutoRedirect = $false
+    $request.Timeout = 30000
+    $response = $request.GetResponse()   # 4xx/5xx throw; 3xx don't with redirects off
+    try { $location = $response.Headers["Location"] } finally { $response.Close() }
+    if (-not $location) { throw "CurseForge gave no download location for project $ProjectId file $FileId" }
+    $uri = New-Object System.Uri((New-Object System.Uri($BaseUrl)), $location)
+    $fileName = [System.Uri]::UnescapeDataString(($uri.AbsolutePath -split '/')[-1])
+    return [pscustomobject]@{ FileName = $fileName; Url = $uri.AbsoluteUri }
+}
+
+# Downloads to <Path>.part and renames only when complete, so a failed or
+# interrupted download never leaves a truncated jar where the server loads it.
+function Save-UrlToFile {
+    param(
+        [Parameter(Mandatory = $true)][string]$Url,
+        [Parameter(Mandatory = $true)][string]$Path
+    )
+    [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor [System.Net.SecurityProtocolType]::Tls12
+    $part = "$Path.part"
+    $client = New-Object System.Net.WebClient
+    try {
+        $client.DownloadFile($Url, $part)
+        Move-Item -LiteralPath $part -Destination $Path -Force
+    } catch {
+        Remove-Item -LiteralPath $part -Force -ErrorAction SilentlyContinue
+        throw
+    } finally {
+        $client.Dispose()
+    }
+}
+
+# Runs -Work once per item, $Throttle at a time, retrying failures up to
+# $Retries attempts. Results come back in input order as
+# { Item; Ok; Result; Error }. The work runs in separate runspaces, which
+# only see the functions named in -Functions - scriptblocks are passed as
+# text, never as live objects (they don't cross runspaces reliably).
+function Invoke-ParallelDownload {
+    param(
+        [Parameter(Mandatory = $true)][object[]]$Items,
+        [Parameter(Mandatory = $true)][scriptblock]$Work,
+        [string[]]$Functions = @(),
+        [int]$Throttle = 6,
+        [int]$Retries = 3,
+        [string]$Activity = "Downloading"
+    )
+    $state = [System.Management.Automation.Runspaces.InitialSessionState]::CreateDefault()
+    foreach ($name in $Functions) {
+        $definition = (Get-Command $name -CommandType Function).Definition
+        $state.Commands.Add((New-Object System.Management.Automation.Runspaces.SessionStateFunctionEntry($name, $definition)))
+    }
+    $pool = [runspacefactory]::CreateRunspacePool(1, $Throttle, $state, $Host)
+    $pool.Open()
+
+    $wrapper = {
+        param($workText, $item, $retries)
+        $work = [scriptblock]::Create($workText)
+        $lastError = $null
+        for ($attempt = 1; $attempt -le $retries; $attempt++) {
+            try {
+                $result = & $work $item
+                return [pscustomobject]@{ Ok = $true; Result = $result; Error = $null }
+            } catch {
+                $lastError = $_.Exception.Message
+                Start-Sleep -Milliseconds (250 * $attempt)
+            }
+        }
+        return [pscustomobject]@{ Ok = $false; Result = $null; Error = $lastError }
+    }
+
+    $jobs = @()
+    try {
+        foreach ($item in $Items) {
+            $ps = [powershell]::Create()
+            $ps.RunspacePool = $pool
+            $ps.AddScript($wrapper.ToString()).AddArgument($Work.ToString()).AddArgument($item).AddArgument($Retries) | Out-Null
+            $jobs += [pscustomobject]@{ PS = $ps; Handle = $ps.BeginInvoke(); Item = $item; Outcome = $null }
+        }
+        $total = $jobs.Count
+        do {
+            $done = 0
+            foreach ($job in $jobs) {
+                if (-not $job.Outcome -and $job.Handle.IsCompleted) {
+                    $job.Outcome = @($job.PS.EndInvoke($job.Handle)) | Select-Object -Last 1
+                    if (-not $job.Outcome) { $job.Outcome = [pscustomobject]@{ Ok = $false; Result = $null; Error = "no result" } }
+                }
+                if ($job.Outcome) { $done++ }
+            }
+            if ($total -gt 0) { Write-Progress -Activity $Activity -Status "$done of $total" -PercentComplete ([int](100 * $done / $total)) }
+            if ($done -lt $total) { Start-Sleep -Milliseconds 200 }
+        } while ($done -lt $total)
+        Write-Progress -Activity $Activity -Completed
+        return @($jobs | ForEach-Object {
+            [pscustomobject]@{ Item = $_.Item; Ok = [bool]$_.Outcome.Ok; Result = $_.Outcome.Result; Error = $_.Outcome.Error }
+        })
+    } finally {
+        foreach ($job in $jobs) { $job.PS.Dispose() }
+        $pool.Close()
+        $pool.Dispose()
+    }
+}
