@@ -48,14 +48,15 @@ function Get-ListenerPid {
 }
 
 # Connects via RCON, authenticates, and executes a command. Returns the response (text).
-# Throws an exception if it can't connect or the password is wrong.
+# Throws an exception if it can't connect, the password is wrong, or the
+# command gets no reply in time (a busy modded server can take seconds).
 function Invoke-RconCommand {
     param(
         [string]$RconHost = "127.0.0.1",
         [Parameter(Mandatory = $true)][int]$Port,
         [Parameter(Mandatory = $true)][string]$Password,
         [Parameter(Mandatory = $true)][string]$Command,
-        [int]$TimeoutMs = 5000
+        [int]$TimeoutMs = 15000
     )
 
     $client = New-Object System.Net.Sockets.TcpClient
@@ -73,7 +74,7 @@ function Invoke-RconCommand {
     # --- local helpers ---
     $sendPacket = {
         param($id, $type, $body)
-        $bodyBytes = [System.Text.Encoding]::ASCII.GetBytes($body)
+        $bodyBytes = [System.Text.Encoding]::UTF8.GetBytes($body)
         $len = 10 + $bodyBytes.Length
         $ms = New-Object System.IO.MemoryStream
         $bw = New-Object System.IO.BinaryWriter($ms)
@@ -114,7 +115,7 @@ function Invoke-RconCommand {
         $bodyLen = $len - 10
         $body = ""
         if ($bodyLen -gt 0) {
-            $body = [System.Text.Encoding]::ASCII.GetString($payload, 8, $bodyLen)
+            $body = [System.Text.Encoding]::UTF8.GetString($payload, 8, $bodyLen)
         }
         return [PSCustomObject]@{ Id = $id; Type = $type; Body = $body }
     }
@@ -136,6 +137,7 @@ function Invoke-RconCommand {
             $resp = & $readPacket
         } catch {
             # 'stop' usually closes the connection before responding: not an error.
+            if ($Command -ne "stop") { throw }
             $resp = [PSCustomObject]@{ Id = 2; Type = 0; Body = "" }
         }
         return $resp.Body

@@ -993,7 +993,8 @@ $consoleBackButton.Add_Click({
 })
 
 function Send-ConsoleCommand {
-    $cmd = $commandBox.Text.Trim()
+    # People type commands the way they do in chat ("/op name"); RCON wants them bare.
+    $cmd = $commandBox.Text.Trim().TrimStart('/')
     if ([string]::IsNullOrWhiteSpace($cmd) -or $script:rconJob) { return }
 
     $props = Read-ServerProperties (Join-Path $script:selected.Path "server.properties")
@@ -1068,7 +1069,10 @@ $rconJobTimer.Add_Tick({
 
     if ($script:rconJob.State -eq "Completed") {
         $response = Receive-Job $script:rconJob
-        if ($response -and $sameServer) { $logText.AppendText("$response`r`n") }
+        # Many mod commands (e.g. Chunky) only answer here, never in the log,
+        # so an empty reply is shown rather than looking like nothing happened.
+        if (-not $response) { $response = "(no output)" }
+        if ($sameServer) { $logText.AppendText("$response`r`n") }
     } else {
         $reason = $script:rconJob.ChildJobs[0].JobStateInfo.Reason.Message
         if ($sameServer) { $logText.AppendText("Error: $reason`r`n") }
