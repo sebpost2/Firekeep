@@ -318,3 +318,39 @@ function Get-LaunchLockState {
     $leftover = ($names -contains "cmd.exe") -and -not ($names -contains "java.exe" -or $names -contains "javaw.exe")
     return [PSCustomObject]@{ Kind = $(if ($leftover) { "Leftover" } else { "Starting" }); Pid = $launcherPid }
 }
+
+# The jar a failed start blames for being client-only, so Home can offer to
+# move it aside: the "Mod File:" line that follows an "invalid dist
+# DEDICATED_SERVER" crash, or - when a Mixin failure names only a mod id -
+# the jar in mods\ whose META-INF/mods.toml declares that id. $null when the
+# crash isn't about such a mod or the jar isn't in mods\ (never guesses).
+function Get-ClientOnlyModJar {
+    param(
+        [Parameter(Mandatory = $true)][string]$InstancePath,
+        [AllowEmptyString()][string]$ConsoleText = ""
+    )
+    $modsDir = Join-Path $InstancePath "mods"
+    $distAt = $ConsoleText.IndexOf("invalid dist DEDICATED_SERVER")
+    if ($distAt -ge 0 -and $ConsoleText.Substring($distAt) -match 'Mod File: .*[\\/]mods[\\/]([^\\/\r\n]+\.jar)') {
+        $jar = $Matches[1]
+        if (Test-Path -LiteralPath (Join-Path $modsDir $jar)) { return $jar }
+        return $null
+    }
+    if ($ConsoleText -match 'Mixin apply for mod ([\w-]+) failed') {
+        $modId = $Matches[1]
+        Add-Type -AssemblyName System.IO.Compression.FileSystem
+        foreach ($file in (Get-ChildItem -LiteralPath $modsDir -Filter "*.jar" -File -ErrorAction SilentlyContinue)) {
+            try { $zip = [System.IO.Compression.ZipFile]::OpenRead($file.FullName) } catch { continue }
+            try {
+                $toml = $zip.GetEntry("META-INF/mods.toml")
+                if (-not $toml) { continue }
+                $reader = New-Object System.IO.StreamReader($toml.Open())
+                try { $text = $reader.ReadToEnd() } finally { $reader.Dispose() }
+                if ($text -match "(?m)^\s*modId\s*=\s*[`"']$([regex]::Escape($modId))[`"']") { return $file.Name }
+            } finally {
+                $zip.Dispose()
+            }
+        }
+    }
+    return $null
+}

@@ -496,3 +496,63 @@ Describe "Get-StartupFailure (before Minecraft launches)" {
         Get-StartupFailure -ConsoleText "" -LauncherExited $true | Should Not Match "internet"
     }
 }
+
+Describe "Get-ClientOnlyModJar" {
+
+    Add-Type -AssemblyName System.IO.Compression, System.IO.Compression.FileSystem
+
+    # A fake mod jar: a zip whose META-INF/mods.toml declares $ModId.
+    function New-ModJar([string]$Dir, [string]$FileName, [string]$ModId) {
+        $path = Join-Path $Dir $FileName
+        $stream = [System.IO.File]::Open($path, [System.IO.FileMode]::CreateNew)
+        $zip = New-Object System.IO.Compression.ZipArchive($stream, [System.IO.Compression.ZipArchiveMode]::Create)
+        try {
+            $w = New-Object System.IO.StreamWriter($zip.CreateEntry("META-INF/mods.toml").Open())
+            try { $w.Write("modLoader=`"javafml`"`n[[mods]]`nmodId=`"$ModId`"`nversion=`"1.0`"`n") } finally { $w.Dispose() }
+        } finally { $zip.Dispose(); $stream.Dispose() }
+    }
+
+    function New-Instance { $d = Join-Path $env:TEMP ("clientonly-" + [Guid]::NewGuid().ToString("N")); New-Item -ItemType Directory -Force -Path (Join-Path $d "mods") | Out-Null; return $d }
+
+    It "takes the jar from the Mod File line after an 'invalid dist' crash" {
+        $dir = New-Instance
+        try {
+            New-ModJar (Join-Path $dir "mods") "oculus-mc1.20.1-1.8.0.jar" "oculus"
+            $text = "Mod File: /D:/srv/mods/other.jar`nAttempted to load class net/minecraft/client/Minecraft for invalid dist DEDICATED_SERVER`n-- MOD oculus --`n`tMod File: /D:/srv/mods/oculus-mc1.20.1-1.8.0.jar`nFailed to start the minecraft server"
+            Get-ClientOnlyModJar -InstancePath $dir -ConsoleText $text | Should Be "oculus-mc1.20.1-1.8.0.jar"
+        } finally { Remove-Item -Recurse -Force $dir }
+    }
+
+    It "finds a Mixin failure's mod by the modId inside the jars" {
+        $dir = New-Instance
+        try {
+            New-ModJar (Join-Path $dir "mods") "Blur-5.0.0.jar" "blur"
+            New-ModJar (Join-Path $dir "mods") "Other-1.0.jar" "other"
+            $text = "Mixin apply for mod blur failed blur.mixins.json:MixinGameRenderer`nFailed to start the minecraft server"
+            Get-ClientOnlyModJar -InstancePath $dir -ConsoleText $text | Should Be "Blur-5.0.0.jar"
+        } finally { Remove-Item -Recurse -Force $dir }
+    }
+
+    # Review focus 4.
+    It "handles jar names with square brackets" {
+        $dir = New-Instance
+        try {
+            New-ModJar (Join-Path $dir "mods") "[1.20.1]ExtraSounds-2.0.jar" "extrasounds"
+            $text = "Mixin apply for mod extrasounds failed extrasounds.mixins.json:X"
+            Get-ClientOnlyModJar -InstancePath $dir -ConsoleText $text | Should Be "[1.20.1]ExtraSounds-2.0.jar"
+        } finally { Remove-Item -Recurse -Force $dir }
+    }
+
+    It "returns null when the named jar isn't in mods" {
+        $dir = New-Instance
+        try {
+            $text = "for invalid dist DEDICATED_SERVER`n`tMod File: /D:/srv/mods/gone.jar"
+            Get-ClientOnlyModJar -InstancePath $dir -ConsoleText $text | Should Be $null
+        } finally { Remove-Item -Recurse -Force $dir }
+    }
+
+    It "returns null for crashes that aren't about a client-only mod" {
+        $dir = New-Instance
+        try { Get-ClientOnlyModJar -InstancePath $dir -ConsoleText "java.lang.OutOfMemoryError" | Should Be $null } finally { Remove-Item -Recurse -Force $dir }
+    }
+}
