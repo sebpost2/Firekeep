@@ -6,7 +6,8 @@ All notable changes to this project are documented here. Loosely follows
 ## [Unreleased]
 
 ### Added
-- Add Server imports regular CurseForge modpack downloads (Forge), not just
+- Add Server imports regular CurseForge modpack downloads (Forge, Minecraft
+  1.17+), not just
   "Server Files": downloads the mods itself, copies the pack's settings
   with a byte-for-byte check, and installs Forge. Mods that can't be
   downloaded are listed with links (Start waits until they're added), and a
