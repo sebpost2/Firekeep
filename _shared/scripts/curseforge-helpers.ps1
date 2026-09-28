@@ -30,9 +30,8 @@ function Set-PortableJavaForVariablesFile {
     if (-not (Test-Path $installJavaScript)) { return }
 
     $javaExe = Join-Path $mcRoot "tools\java\$JavaVersion\bin\java.exe"
-    if (-not (Test-Path $javaExe)) {
-        & $installJavaScript -MajorVersion $JavaVersion
-    }
+    # Installs, or repairs a broken install; returns right away when Java works.
+    & $installJavaScript -MajorVersion $JavaVersion
     if (-not (Test-Path $javaExe)) { return }
 
     # variables.txt escapes \ and : with an extra \ (its own documented format).

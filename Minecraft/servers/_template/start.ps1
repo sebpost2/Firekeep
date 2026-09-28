@@ -20,10 +20,9 @@ if ($detectedJavaVersion -and $detectedJavaVersion -ne $JavaVersion) {
 $javaHome = Join-Path $mcRoot "tools\java\$JavaVersion"
 $javaBin = Join-Path $javaHome "bin"
 
-if (-not (Test-Path (Join-Path $javaBin "java.exe"))) {
-    Write-Host "Java $JavaVersion isn't installed yet, installing..."
-    & (Join-Path $mcRoot "scripts\install-java.ps1") -MajorVersion $JavaVersion
-}
+# Always run the installer: it returns right away when Java works, and
+# repairs it when it's missing or broken (e.g. half-extracted).
+& (Join-Path $mcRoot "scripts\install-java.ps1") -MajorVersion $JavaVersion
 
 $env:PATH = "$javaBin;$env:PATH"
 $env:JAVA_HOME = $javaHome
