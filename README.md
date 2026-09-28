@@ -139,6 +139,11 @@ new one, import a `.zip`, or send one to the trash (recoverable from
 **View trash** until you empty it). The server needs to be stopped first to
 make changes.
 
+**Backups happen on their own:** the first time you start a server each day,
+its world is zipped into that server's `backups\` folder first (the newest 5
+are kept). To go back to one, open **Manage Maps** → **Import** and pick the
+zip.
+
 ---
 
 ## Adding ANOTHER Minecraft modpack

@@ -13,6 +13,7 @@ $gsRoot = Split-Path -Parent $mcRoot
 . (Join-Path $gsRoot "_shared\scripts\modloader-helpers.ps1")
 . (Join-Path $gsRoot "_shared\scripts\new-server-helpers.ps1")
 . (Join-Path $gsRoot "_shared\scripts\server-settings-helpers.ps1")
+. (Join-Path $gsRoot "_shared\scripts\backup-helpers.ps1")
 $detectedJavaVersion = Get-DetectedJavaVersion -InstancePath $PSScriptRoot
 if ($detectedJavaVersion -and $detectedJavaVersion -ne $JavaVersion) {
     Write-Host "Detected Java $detectedJavaVersion from the modpack files (run.config.ps1 says $JavaVersion) - using $detectedJavaVersion for this start."
@@ -38,6 +39,14 @@ if (-not $eulaContent -or $eulaContent -notmatch "eula\s*=\s*true") {
 # The app tracks and stops servers over RCON; servers built by hand may not
 # have it on yet.
 Set-RconDefaults -PropsPath (Join-Path $PSScriptRoot "server.properties")
+
+# Once a day, before the world is opened. A failed backup never blocks play.
+try {
+    $backup = Backup-World -InstancePath $PSScriptRoot
+    if ($backup) { Write-Host "Backed up the world to $backup" }
+} catch {
+    Write-Warning "World backup failed ($($_.Exception.Message)) - starting anyway."
+}
 
 Push-Location $PSScriptRoot
 try {
