@@ -89,3 +89,78 @@ Describe "Read-CurseForgeManifest" {
         try { { Read-CurseForgeManifest -ZipPath $zip } | Should Throw "uses Fabric" } finally { Remove-Item $zip }
     }
 }
+
+Describe "Expand-ZipFolderVerified" {
+
+    function New-Dest { $d = Join-Path $env:TEMP ("cf-dest-" + [Guid]::NewGuid().ToString("N")); New-Item -ItemType Directory -Path $d | Out-Null; return $d }
+
+    # Lesson 1 from the Arcadia build: a wildcard unzip silently dropped every
+    # file inside subfolders.
+    It "copies files in nested folders" {
+        $zip = New-TestZip @{
+            "overrides/config/a.toml"                             = "a"
+            "overrides/config/ftbquests/quests/chapters/one.snbt" = "deep"
+            "overrides/kubejs/server_scripts/x.js"                = "js"
+            "overrides/paragliderSettings.nbt"                    = "nbt"
+        }
+        $dest = New-Dest
+        try {
+            Expand-ZipFolderVerified -ZipPath $zip -Prefix "overrides/" -Destination $dest | Should Be 4
+            Get-Content (Join-Path $dest "config\ftbquests\quests\chapters\one.snbt") -Raw | Should Match "deep"
+            Test-Path (Join-Path $dest "paragliderSettings.nbt") | Should Be $true
+        } finally { Remove-Item $zip; Remove-Item -Recurse -Force $dest }
+    }
+
+    It "skips the excluded top-level folders and files outside the prefix" {
+        $zip = New-TestZip @{
+            "manifest.json"                    = "{}"
+            "overrides/resourcepacks/pack.zip" = "rp"
+            "overrides/shaderpacks/shader.zip" = "sp"
+            "overrides/mods/handadded.jar"     = "jar"
+        }
+        $dest = New-Dest
+        try {
+            Expand-ZipFolderVerified -ZipPath $zip -Prefix "overrides/" -Destination $dest -ExcludeTop @("resourcepacks", "shaderpacks") | Should Be 1
+            Test-Path (Join-Path $dest "mods\handadded.jar") | Should Be $true
+            Test-Path (Join-Path $dest "resourcepacks") | Should Be $false
+            Test-Path (Join-Path $dest "manifest.json") | Should Be $false
+        } finally { Remove-Item $zip; Remove-Item -Recurse -Force $dest }
+    }
+
+    # Review focus 1: the zip is downloaded from the internet.
+    It "refuses an entry that would land outside the destination" {
+        $zip = New-TestZip @{ "overrides/../../escaped.txt" = "x" }
+        $dest = New-Dest
+        try {
+            { Expand-ZipFolderVerified -ZipPath $zip -Prefix "overrides/" -Destination $dest } | Should Throw "Unsafe path"
+            Test-Path (Join-Path (Split-Path $dest) "escaped.txt") | Should Be $false
+        } finally { Remove-Item $zip; Remove-Item -Recurse -Force $dest }
+    }
+
+    # Review focus 4.
+    It "keeps square brackets in file names" {
+        $zip = New-TestZip @{ "overrides/mods/[1.20.1]Mod.jar" = "jar" }
+        $dest = New-Dest
+        try {
+            Expand-ZipFolderVerified -ZipPath $zip -Prefix "overrides/" -Destination $dest | Should Be 1
+            Test-Path -LiteralPath (Join-Path $dest "mods\[1.20.1]Mod.jar") | Should Be $true
+        } finally { Remove-Item $zip; Remove-Item -Recurse -Force $dest }
+    }
+}
+
+Describe "Test-ZipEntryMatchesFile" {
+    It "detects a file that differs from its zip entry" {
+        $zip = New-TestZip @{ "overrides/a.txt" = "original" }
+        $dest = Join-Path $env:TEMP ("cf-dest-" + [Guid]::NewGuid().ToString("N"))
+        New-Item -ItemType Directory -Path $dest | Out-Null
+        $archive = [System.IO.Compression.ZipFile]::OpenRead($zip)
+        try {
+            $entry = $archive.GetEntry("overrides/a.txt")
+            $file = Join-Path $dest "a.txt"
+            [System.IO.Compression.ZipFileExtensions]::ExtractToFile($entry, $file)
+            Test-ZipEntryMatchesFile -Entry $entry -Path $file | Should Be $true
+            [System.IO.File]::WriteAllText($file, "changed!")
+            Test-ZipEntryMatchesFile -Entry $entry -Path $file | Should Be $false
+        } finally { $archive.Dispose(); Remove-Item $zip; Remove-Item -Recurse -Force $dest }
+    }
+}

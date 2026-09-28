@@ -171,3 +171,66 @@ function Read-CurseForgeManifest {
         OverridesDir = $overrides
     }
 }
+
+# True when the file on disk has exactly the zip entry's bytes.
+function Test-ZipEntryMatchesFile {
+    param(
+        [Parameter(Mandatory = $true)]$Entry,
+        [Parameter(Mandatory = $true)][string]$Path
+    )
+    if (-not (Test-Path -LiteralPath $Path)) { return $false }
+    if ((Get-Item -LiteralPath $Path).Length -ne $Entry.Length) { return $false }
+    $sha = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $zipStream = $Entry.Open()
+        try { $zipHash = $sha.ComputeHash($zipStream) } finally { $zipStream.Dispose() }
+        $fileStream = [System.IO.File]::OpenRead($Path)
+        try { $fileHash = $sha.ComputeHash($fileStream) } finally { $fileStream.Dispose() }
+        return [BitConverter]::ToString($zipHash) -eq [BitConverter]::ToString($fileHash)
+    } finally {
+        $sha.Dispose()
+    }
+}
+
+# Copies every file under $Prefix in the zip into $Destination (keeping
+# subfolders, skipping the $ExcludeTop folders), then checks each copied file
+# byte for byte against the zip. Lesson from the Arcadia build: a wildcard
+# unzip silently dropped every file inside subfolders, so a copy is only
+# trusted once verified. Refuses entries that would land outside
+# $Destination (the zip comes from the internet). Returns the file count.
+function Expand-ZipFolderVerified {
+    param(
+        [Parameter(Mandatory = $true)][string]$ZipPath,
+        [Parameter(Mandatory = $true)][string]$Prefix,
+        [Parameter(Mandatory = $true)][string]$Destination,
+        [string[]]$ExcludeTop = @()
+    )
+    $root = [System.IO.Path]::GetFullPath($Destination).TrimEnd('\') + '\'
+    $zip = [System.IO.Compression.ZipFile]::OpenRead($ZipPath)
+    try {
+        $copied = @()
+        foreach ($entry in $zip.Entries) {
+            $name = $entry.FullName -replace '\\', '/'
+            if (-not $name.StartsWith($Prefix) -or $name.EndsWith('/')) { continue }
+            $relative = $name.Substring($Prefix.Length)
+            if (-not $relative) { continue }
+            if ($ExcludeTop -contains ($relative -split '/')[0]) { continue }
+
+            $target = [System.IO.Path]::GetFullPath((Join-Path $Destination ($relative -replace '/', '\')))
+            if (-not $target.StartsWith($root, [StringComparison]::OrdinalIgnoreCase)) {
+                throw "Unsafe path in the modpack zip: $name"
+            }
+            [System.IO.Directory]::CreateDirectory([System.IO.Path]::GetDirectoryName($target)) | Out-Null
+            [System.IO.Compression.ZipFileExtensions]::ExtractToFile($entry, $target, $true)
+            $copied += [pscustomobject]@{ Entry = $entry; Path = $target }
+        }
+        foreach ($c in $copied) {
+            if (-not (Test-ZipEntryMatchesFile -Entry $c.Entry -Path $c.Path)) {
+                throw "Extracted file doesn't match the modpack zip: $($c.Entry.FullName)"
+            }
+        }
+        return $copied.Count
+    } finally {
+        $zip.Dispose()
+    }
+}
