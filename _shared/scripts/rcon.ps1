@@ -24,27 +24,16 @@ function Read-ServerProperties {
     return $props
 }
 
-# Quick check for whether something is listening on a TCP port (without blocking long).
+# Quick check for whether something on this machine is listening on a TCP port.
+# Reads the OS listener table instead of connecting: a connection to the RCON
+# port gets logged by Minecraft ("RCON Client ... started/shutting down"), and
+# the GUI polls this several times a second.
 function Test-PortOpen {
     param(
-        [string]$RconHost = "127.0.0.1",
-        [Parameter(Mandatory = $true)][int]$Port,
-        [int]$TimeoutMs = 150
+        [Parameter(Mandatory = $true)][int]$Port
     )
-    $client = New-Object System.Net.Sockets.TcpClient
-    try {
-        $iar = $client.BeginConnect($RconHost, $Port, $null, $null)
-        $ok = $iar.AsyncWaitHandle.WaitOne($TimeoutMs)
-        if ($ok -and $client.Connected) {
-            $client.EndConnect($iar)
-            return $true
-        }
-        return $false
-    } catch {
-        return $false
-    } finally {
-        $client.Close()
-    }
+    $listeners = [System.Net.NetworkInformation.IPGlobalProperties]::GetIPGlobalProperties().GetActiveTcpListeners()
+    return [bool]($listeners | Where-Object { $_.Port -eq $Port })
 }
 
 # Returns the PID of the process listening on a port (or $null).
