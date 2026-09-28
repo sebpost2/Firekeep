@@ -57,7 +57,7 @@ function New-ServerFromTemplate {
     $template = Join-Path $McRoot "servers\_template"
     $dest = Join-Path $McRoot "servers\$Name"
     if (Test-Path $dest) {
-        throw "A server named '$Name' already exists at $dest"
+        throw "A server named '$Name' already exists at $dest (maybe from an import that didn't finish) - delete that folder or pick another name."
     }
 
     Copy-Item -Recurse -Path $template -Destination $dest

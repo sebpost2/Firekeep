@@ -121,9 +121,17 @@
             Margin="0,24,0,0"/>
 
     <!-- Hint -->
-    <TextBlock Grid.Row="4" x:Name="HintText" Text=" " Foreground="{StaticResource MutedTextBrush}"
-               FontFamily="Segoe UI" FontSize="12" HorizontalAlignment="Center" Margin="0,12,0,0"
-               TextWrapping="Wrap" TextAlignment="Center" MaxWidth="440"/>
+    <StackPanel Grid.Row="4" HorizontalAlignment="Center">
+        <TextBlock x:Name="HintText" Text=" " Foreground="{StaticResource MutedTextBrush}"
+                   FontFamily="Segoe UI" FontSize="12" HorizontalAlignment="Center" Margin="0,12,0,0"
+                   TextWrapping="Wrap" TextAlignment="Center" MaxWidth="440"/>
+        <WrapPanel HorizontalAlignment="Center" Margin="0,6,0,0">
+            <Button x:Name="ExcludeModButton" Content="Move it aside and start again" Style="{StaticResource LinkButtonStyle}"
+                    Visibility="Collapsed" Margin="6,0"/>
+            <Button x:Name="ShowMissingModsButton" Content="Show missing mods" Style="{StaticResource LinkButtonStyle}"
+                    Visibility="Collapsed" Margin="6,0"/>
+        </WrapPanel>
+    </StackPanel>
 
     <!-- Secondary actions -->
     <WrapPanel Grid.Row="5" Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,8,0,0">

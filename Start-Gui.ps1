@@ -15,6 +15,7 @@ $root = $PSScriptRoot
 . (Join-Path $root "_shared\scripts\tunnel-helpers.ps1")
 . (Join-Path $root "_shared\scripts\worlds-helpers.ps1")
 . (Join-Path $root "_shared\scripts\new-server-helpers.ps1")
+. (Join-Path $root "_shared\scripts\curseforge-helpers.ps1")
 . (Join-Path $root "_shared\scripts\server-settings-helpers.ps1")
 . (Join-Path $root "_shared\scripts\gui-dialogs.ps1")
 . (Join-Path $root "_shared\scripts\verity-helpers.ps1")
@@ -95,6 +96,8 @@ $manualAddressBox = $homeRoot.FindName("ManualAddressBox")
 $manualAddressSaveButton = $homeRoot.FindName("ManualAddressSaveButton")
 $actionButton     = $homeRoot.FindName("ActionButton")
 $homeHintText     = $homeRoot.FindName("HintText")
+$excludeModButton      = $homeRoot.FindName("ExcludeModButton")
+$showMissingModsButton = $homeRoot.FindName("ShowMissingModsButton")
 $mapsButton       = $homeRoot.FindName("MapsButton")
 $settingsButton   = $homeRoot.FindName("SettingsButton")
 $consoleButton    = $homeRoot.FindName("ConsoleButton")
@@ -124,6 +127,7 @@ $script:launchedProcess = $null  # the start-with-tunnel.ps1 wrapper process, fo
 $script:launchTime      = $null  # when that launch began (to ignore the previous run's log)
 $script:consoleOffset   = 0      # how far Watch-ServerStartup has read logs\firekeep-console.log
 $script:startupFailureText = $null # why the last start failed, kept on screen until the next action
+$script:clientOnlyJar   = $null  # jar the last failed start blamed as client-only, offered by ExcludeModButton
 $script:closingApp      = $false # true once Window.Closing has taken over to stop the server
 $script:okToClose       = $false # set right before we let the real close happen
 
@@ -246,6 +250,9 @@ function Sync-StatusDisplay {
         if ($state -eq "Running" -or $state -eq "Stopped") {
             $homeHintText.Text = if ($script:startupFailureText) { $script:startupFailureText } else { " " }
         }
+        $stopped = ($state -eq "Stopped")
+        $excludeModButton.Visibility = if ($stopped -and $script:clientOnlyJar) { "Visible" } else { "Collapsed" }
+        $showMissingModsButton.Visibility = if ($stopped -and (Test-Path -LiteralPath (Join-Path $script:selected.Path "MISSING-MODS.txt"))) { "Visible" } else { "Collapsed" }
     }
 
     if ($script:selected -and $script:selected.Game -eq "Minecraft" -and (Test-VerityModPresent -InstancePath $script:selected.Path)) {
@@ -270,6 +277,7 @@ $serverCombo.Add_SelectionChanged({
     $script:selected = $script:instances[$serverCombo.SelectedIndex]
     $script:startupFailureText = $null
     $script:pendingStart = $false
+    $script:clientOnlyJar = $null
     $script:pendingStop = $false
     $verityApiKeyBox.Password = if ($script:selected.Game -eq "Minecraft" -and (Test-VerityModPresent -InstancePath $script:selected.Path)) {
         Get-VerityApiKey -InstancePath $script:selected.Path
@@ -314,6 +322,12 @@ $actionButton.Add_Click({
         }
         if ($lock -and $lock.Kind -eq "Leftover") { Stop-ProcessTree -ProcessId $lock.Pid }
         if ($lock) { Remove-Item -Path (Join-Path $script:selected.Path ".starting.lock") -Force -ErrorAction SilentlyContinue }
+        $missingMods = @(Get-MissingModDownloads -InstancePath $script:selected.Path)
+        if ($missingMods.Count -gt 0) {
+            $script:startupFailureText = "$($missingMods.Count) mods still need a manual download before this server can start. Click Show missing mods."
+            $homeHintText.Text = $script:startupFailureText
+            return
+        }
     }
 
     $serverCombo.IsEnabled = $false
@@ -336,6 +350,7 @@ $actionButton.Add_Click({
         $script:launchTime = Get-Date
         $script:consoleOffset = 0
         $script:startupFailureText = $null
+        $script:clientOnlyJar = $null
         $actionButton.Content = "CANCEL"
         $homeHintText.Text = "Lighting it up..."
         $script:launchedProcess = Start-Process -FilePath "powershell.exe" -WindowStyle Hidden -PassThru -ArgumentList @(
@@ -343,6 +358,29 @@ $actionButton.Add_Click({
             "`"$(Join-Path $script:selected.Path 'start-with-tunnel.ps1')`""
         )
     }
+})
+
+# One-click fix for a mod the server refused to load (client-only). Only
+# after a confirmation naming the jar, and only moved, never deleted
+# (docs/superpowers/specs/2026-09-28-curseforge-client-import-design.md).
+$excludeModButton.Add_Click({
+    $jar = $script:clientOnlyJar
+    if (-not $jar -or -not $script:selected) { return }
+    if (-not (Show-ConfirmDialog -Overlay $overlay -Message "Move $jar out of the mods folder (into _excluded\client-only) and start the server again?")) { return }
+    $target = Join-Path $script:selected.Path "_excluded\client-only"
+    New-Item -ItemType Directory -Force -Path $target | Out-Null
+    Move-Item -LiteralPath (Join-Path $script:selected.Path "mods\$jar") -Destination $target -Force
+    $script:clientOnlyJar = $null
+    $script:startupFailureText = $null
+    $excludeModButton.Visibility = "Collapsed"
+    $actionButton.RaiseEvent((New-Object System.Windows.RoutedEventArgs([System.Windows.Controls.Primitives.ButtonBase]::ClickEvent)))
+})
+
+$showMissingModsButton.Add_Click({
+    if (-not $script:selected) { return }
+    $list = Join-Path $script:selected.Path "MISSING-MODS.txt"
+    if (Test-Path -LiteralPath $list) { Start-Process notepad.exe -ArgumentList "`"$list`"" }
+    Start-Process explorer.exe -ArgumentList "`"$(Join-Path $script:selected.Path 'mods')`""
 })
 
 function Invoke-VerityServiceToggle {
@@ -892,7 +930,11 @@ $createButton.Add_Click({
             if ($isZip) {
                 . (Join-Path $GsRoot "_shared\scripts\curseforge-helpers.ps1")
                 try {
-                    $javaVersion = Install-CurseForgeServerZip -ZipPath $localFile -DestPath $dest
+                    if ((Get-CurseForgeZipKind -ZipPath $localFile) -eq "ClientExport") {
+                        $javaVersion = (Install-CurseForgeClientExport -ZipPath $localFile -DestPath $dest -McRoot $McRoot).JavaVersion
+                    } else {
+                        $javaVersion = Install-CurseForgeServerZip -ZipPath $localFile -DestPath $dest
+                    }
                     # The pack may ship its own server.properties over ours.
                     Set-RconDefaults -PropsPath (Join-Path $dest "server.properties")
                 } catch {
@@ -933,7 +975,15 @@ $createButton.Add_Click({
 $addJobTimer = New-Object System.Windows.Threading.DispatcherTimer
 $addJobTimer.Interval = [TimeSpan]::FromMilliseconds(500)
 $addJobTimer.Add_Tick({
-    if (-not $script:addJob -or $script:addJob.State -eq "Running" -or $script:addJob.State -eq "NotStarted") { return }
+    if (-not $script:addJob) { return }
+    if ($script:addJob.State -eq "Running" -or $script:addJob.State -eq "NotStarted") {
+        # Imports report their steps with Write-Progress ("Downloading mods: 120 of 363").
+        $progress = $script:addJob.ChildJobs[0].Progress | Select-Object -Last 1
+        if ($progress -and $progress.RecordType -ne "Completed") {
+            $addHintText.Text = "$($progress.Activity): $($progress.StatusDescription)".TrimEnd(': ')
+        }
+        return
+    }
 
     if ($script:addJob.State -eq "Completed") {
         $createdName = Receive-Job $script:addJob
@@ -942,6 +992,10 @@ $addJobTimer.Add_Tick({
         Set-AddServerFormEnabled $true
         $script:instances = @(Get-ServerInstances -Root $root)
         Refresh-ServerList -PreferName $createdName
+        $missingMods = @(Get-MissingModDownloads -InstancePath $script:selected.Path)
+        if ($missingMods.Count -gt 0) {
+            $script:startupFailureText = "Created - but $($missingMods.Count) mods couldn't be downloaded automatically. Click Show missing mods."
+        }
         Update-AddressDisplay
         Show-Screen "Home"
         return
@@ -1213,6 +1267,7 @@ function Watch-ServerStartup {
         Where-Object { $_.LastWriteTime -ge $script:launchTime } | Sort-Object LastWriteTime -Descending | Select-Object -First 1
     $details = if ($crash) { "crash-reports\$($crash.Name)" } elseif ($fresh) { "logs\firekeep-console.log" } else { $null }
     $script:startupFailureText = if ($details) { "$message (Details: $details)" } else { $message }
+    $script:clientOnlyJar = Get-ClientOnlyModJar -InstancePath $script:selected.Path -ConsoleText $fullText
     $script:launchedProcess = $null
     $script:pendingStart = $false
 }
