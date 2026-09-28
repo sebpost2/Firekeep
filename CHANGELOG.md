@@ -3,6 +3,38 @@
 All notable changes to this project are documented here. Loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Added
+- Automatic world backup on the first start of each day, into the server's
+  `backups\` folder (newest 5 kept). Restore with Manage Maps -> Import.
+- Failed starts are explained in one sentence on the Home screen (memory,
+  wrong or broken Java, client-only or failing mod, missing dependency, port
+  or world already in use, EULA, Java download) instead of staying on
+  "Starting" forever. Server output is captured to
+  `logsirekeep-console.log`.
+- Suggested max memory (from the PC's RAM and the mod count) in Add Server
+  and Server Settings, with a warning when a value leaves Windows too little.
+- Aikar's GC flags are added when a modpack sets no garbage collector.
+- Existing servers pick up `start.ps1` fixes automatically when their copy
+  is an unmodified earlier template (customized copies are left alone).
+
+### Fixed
+- Max memory was ignored by Forge/NeoForge and ServerPackCreator servers
+  (they read `user_jvm_args.txt` / `variables.txt`, not `run.config.ps1`).
+- A broken or half-installed portable Java was never repaired; it's now
+  checked by actually running it, and reinstalled.
+- Servers not created from the template had no RCON, so they showed as
+  stopped forever and couldn't be stopped. Every server now gets it.
+- Forge's `run.bat` "pause" left a hidden window holding the server folder
+  after a stop, which blocked deleting it and the next start. Such leftovers
+  are also cleared automatically on Start.
+- Console: slow or empty replies (e.g. Chunky) looked like the command did
+  nothing; a leading "/" is now accepted.
+- The GUI's status polling no longer makes Minecraft log an RCON client
+  connecting several times a second.
+- Home screen header still said "GAME SERVERS".
+
 ## [1.0.0] - 2026-08-10
 
 First tracked release.
