@@ -227,3 +227,52 @@ function Get-StartupFailure {
     }
     return "The server crashed while starting."
 }
+
+# Fingerprint of a script's text that ignores line endings, a BOM and
+# trailing whitespace - so a copy that git or an editor re-saved with CRLF
+# still counts as the same version.
+function Get-ScriptFingerprint {
+    param([Parameter(Mandatory = $true)][string]$Path)
+    $text = [System.IO.File]::ReadAllText($Path).Replace("`r`n", "`n").TrimEnd()
+    $sha = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        return ($sha.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($text)) | ForEach-Object { $_.ToString("x2") }) -join ""
+    } finally {
+        $sha.Dispose()
+    }
+}
+
+# Fingerprints of every earlier version of Minecraft\servers\_template\start.ps1.
+# When you change that file, add the OLD version's fingerprint here
+# (Get-ScriptFingerprint) - tests/gui-helpers.tests.ps1 fails until you do.
+function Get-PastTemplateStartHashes {
+    return @(
+        "2eff4f425014e19a63ed7408a6c03ff6a6a7c6b3b4eaf282aa1aa53fe2725f41"  # 3e7b280 initial
+        "5705f3e7e68c4241b1c772f2dfb0bcfad37a7dedc1540377a44e888fbc2eae47"  # e1e0fda English
+        "cf96b1afc675db2d1fe23ddcf8a7e6860b0f2803255730d25c2ec1723caca19d"  # cb5233b Java detection
+        "e22810297173ce2494e006b8a82da2371f6f4a566c82309846fcbe7382a52b55"  # f3e9380 v1.0.0
+        "3aed437b13b36b84f95228ec1a156b8b1e73ecb8a9cb19823ef72de2459bfac6"  # b3180ef Java repair
+        "9f474def415bd36b3aae96f2c72de1beec7566acabdb76bde58101d975c9f9b5"  # 2130afe RCON defaults
+        "df7ee009698997d3f7cbee6492b04a4ad45548a72be9030b57d5845c1de63b1d"  # 58a31e8 GC flags
+        "c7fc6ba1cdad735cd0f566fb6468cc3adf4f96ef8a1342566c355d9932635ad6"  # b95fa5d backups
+    )
+}
+
+# Each server gets its own copy of start.ps1 when it's created, so fixes to
+# the template never reached existing servers. Before a start, replace the
+# server's copy with the current template - but only when it's an untouched
+# copy of an earlier template (a known fingerprint), never a customized one.
+# Returns $true when it updated the file.
+function Update-ServerStartScript {
+    param(
+        [Parameter(Mandatory = $true)][string]$InstancePath,
+        [Parameter(Mandatory = $true)][string]$TemplatePath
+    )
+    $target = Join-Path $InstancePath "start.ps1"
+    if (-not (Test-Path $target) -or -not (Test-Path $TemplatePath)) { return $false }
+    $fingerprint = Get-ScriptFingerprint $target
+    if ($fingerprint -eq (Get-ScriptFingerprint $TemplatePath)) { return $false }
+    if ((Get-PastTemplateStartHashes) -notcontains $fingerprint) { return $false }
+    Copy-Item -Path $TemplatePath -Destination $target -Force
+    return $true
+}

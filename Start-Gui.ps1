@@ -316,6 +316,9 @@ $actionButton.Add_Click({
             "-ServerPath", "`"$($script:selected.Path)`""
         )
     } else {
+        # Older servers carry an old copy of start.ps1; bring untouched ones up to date.
+        $templateStart = Join-Path $root "$($script:selected.Game)\servers\_template\start.ps1"
+        Update-ServerStartScript -InstancePath $script:selected.Path -TemplatePath $templateStart | Out-Null
         $script:pendingStart = $true
         $script:launchTime = Get-Date
         $script:consoleOffset = 0

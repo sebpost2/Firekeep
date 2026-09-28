@@ -336,3 +336,61 @@ Describe "Get-StartupFailure" {
         Get-StartupFailure -ConsoleText "" -LauncherExited $true | Should Match "before Minecraft"
     }
 }
+
+Describe "Update-ServerStartScript" {
+
+    $repoRoot = Split-Path -Parent $PSScriptRoot
+    $templatePath = Join-Path $repoRoot "Minecraft\servers\_template\start.ps1"
+
+    function New-Instance([string]$StartContent) {
+        $dir = Join-Path $env:TEMP ("start-refresh-" + [Guid]::NewGuid().ToString("N"))
+        New-Item -ItemType Directory -Path $dir | Out-Null
+        [System.IO.File]::WriteAllText((Join-Path $dir "start.ps1"), $StartContent)
+        return $dir
+    }
+
+    # A real past template version (the v1.0.0 one), as git has it.
+    $oldVersion = (& git -C $repoRoot show "f3e9380:Minecraft/servers/_template/start.ps1" 2>$null) -join "`n"
+
+    It "replaces an unmodified copy of an older template with the current one" -Skip:(-not $oldVersion) {
+        $dir = New-Instance $oldVersion
+        Update-ServerStartScript -InstancePath $dir -TemplatePath $templatePath | Should Be $true
+        (Get-ScriptFingerprint (Join-Path $dir "start.ps1")) | Should Be (Get-ScriptFingerprint $templatePath)
+        Remove-Item -Recurse -Force $dir
+    }
+
+    It "recognizes an older template regardless of line endings" -Skip:(-not $oldVersion) {
+        $dir = New-Instance ($oldVersion -replace "`n", "`r`n")
+        Update-ServerStartScript -InstancePath $dir -TemplatePath $templatePath | Should Be $true
+        Remove-Item -Recurse -Force $dir
+    }
+
+    It "never touches a start.ps1 someone customized" {
+        $dir = New-Instance "# my own start script`nWrite-Host hi"
+        Update-ServerStartScript -InstancePath $dir -TemplatePath $templatePath | Should Be $false
+        Get-Content (Join-Path $dir "start.ps1") -Raw | Should Match "my own start script"
+        Remove-Item -Recurse -Force $dir
+    }
+
+    It "leaves an up-to-date copy alone" {
+        $dir = New-Instance ([System.IO.File]::ReadAllText($templatePath))
+        Update-ServerStartScript -InstancePath $dir -TemplatePath $templatePath | Should Be $false
+        Remove-Item -Recurse -Force $dir
+    }
+
+    # Guards the list itself: whenever _template\start.ps1 changes, the old
+    # version's fingerprint must be added, or servers created from it stop
+    # getting fixes.
+    $pastVersions = @(& git -C $repoRoot log --format=%h -- "Minecraft/servers/_template/start.ps1" 2>$null)
+    It "knows every earlier committed version of the template" -Skip:($pastVersions.Count -eq 0) {
+        $current = Get-ScriptFingerprint $templatePath
+        $known = Get-PastTemplateStartHashes
+        foreach ($commit in $pastVersions) {
+            $tmp = Join-Path $env:TEMP ("tpl-" + [Guid]::NewGuid().ToString("N") + ".ps1")
+            [System.IO.File]::WriteAllText($tmp, ((& git -C $repoRoot show "${commit}:Minecraft/servers/_template/start.ps1") -join "`n"))
+            $fp = Get-ScriptFingerprint $tmp
+            Remove-Item $tmp
+            if ($fp -ne $current) { "$commit known=$($known -contains $fp)" | Should Be "$commit known=True" }
+        }
+    }
+}
