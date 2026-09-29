@@ -166,3 +166,24 @@ Describe "Set-RunConfigJavaAndRam" {
         $content | Should Match 'poné esto en false'
     }
 }
+
+# Modpack files are often named like "Pack [1.20.1].mrpack"; square
+# brackets are wildcards to Test-Path/Resolve-Path.
+Describe "mrpack helpers with brackets in the file name" {
+    It "reads a .mrpack whose name has square brackets" {
+        Add-Type -AssemblyName System.IO.Compression, System.IO.Compression.FileSystem
+        $work = Join-Path $env:TEMP ("mrpack-bracket-" + [Guid]::NewGuid().ToString("N"))
+        New-Item -ItemType Directory -Force -Path $work | Out-Null
+        $plain = Join-Path $work "plain.mrpack"
+        $zip = [System.IO.Compression.ZipFile]::Open($plain, 'Create')
+        $w = New-Object System.IO.StreamWriter($zip.CreateEntry("modrinth.index.json").Open())
+        $w.Write('{"dependencies":{"minecraft":"1.20.1","forge":"47.2.0"}}')
+        $w.Dispose(); $zip.Dispose()
+        $pack = Join-Path $work "Pack [1.20.1].mrpack"
+        [System.IO.File]::Move($plain, $pack)
+        try {
+            Get-MinecraftVersionFromMrpack -MrpackPath $pack | Should Be "1.20.1"
+            Get-ModpackLoader -MrpackPath $pack | Should Be "forge"
+        } finally { Remove-Item -LiteralPath $work -Recurse -Force }
+    }
+}

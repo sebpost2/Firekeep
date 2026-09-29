@@ -729,7 +729,7 @@ $importButton.Add_Click({
     New-Item -ItemType Directory -Path $tmp | Out-Null
     try {
         $mapsHintText.Text = "Extracting..."
-        Expand-Archive -Path $ofd.FileName -DestinationPath $tmp -Force
+        Expand-Archive -LiteralPath $ofd.FileName -DestinationPath $tmp -Force
         $leveldat = Get-ChildItem -Path $tmp -Recurse -File -Filter "level.dat" -ErrorAction SilentlyContinue | Select-Object -First 1
         if (-not $leveldat) { $mapsHintText.Text = "That .zip doesn't look like a Minecraft world (no level.dat)."; return }
         $worldRoot = Split-Path -Parent $leveldat.FullName
@@ -917,23 +917,29 @@ $createButton.Add_Click({
     $script:addJob = Start-Job -ScriptBlock {
         param($GsRoot, $McRoot, $Name, $MrpackPath, $MaxRam)
         . (Join-Path $GsRoot "_shared\scripts\new-server-helpers.ps1")
-        $dest = New-ServerFromTemplate -Name $Name -McRoot $McRoot
 
+        # Find the modpack before creating anything. -LiteralPath: pack files
+        # are often named like "Pack [1.20.1].zip", and to plain Test-Path
+        # the brackets are a wildcard, so the file "didn't exist".
+        $localFile = $null
         if ($MrpackPath) {
-            . (Join-Path $GsRoot "_shared\scripts\mrpack-helpers.ps1")
             $isZip = $MrpackPath -match '\.zip(\?.*)?$'
             $ext = if ($isZip) { "zip" } else { "mrpack" }
             $localFile = $MrpackPath
             if ($MrpackPath -match '^https?://') {
                 $localFile = Join-Path $env:TEMP ("download-" + [Guid]::NewGuid().ToString("N") + ".$ext")
                 Invoke-WebRequest -Uri $MrpackPath -OutFile $localFile -UseBasicParsing
-            } elseif (-not (Test-Path $MrpackPath)) {
+            } elseif (-not (Test-Path -LiteralPath $MrpackPath)) {
                 throw "Could not find the modpack file at '$MrpackPath'."
             }
+        }
 
-            if ($isZip) {
-                . (Join-Path $GsRoot "_shared\scripts\curseforge-helpers.ps1")
-                try {
+        $dest = New-ServerFromTemplate -Name $Name -McRoot $McRoot
+        try {
+            if ($localFile) {
+                . (Join-Path $GsRoot "_shared\scripts\mrpack-helpers.ps1")
+                if ($isZip) {
+                    . (Join-Path $GsRoot "_shared\scripts\curseforge-helpers.ps1")
                     if ((Get-CurseForgeZipKind -ZipPath $localFile) -eq "ClientExport") {
                         $javaVersion = (Install-CurseForgeClientExport -ZipPath $localFile -DestPath $dest -McRoot $McRoot).JavaVersion
                     } else {
@@ -941,37 +947,37 @@ $createButton.Add_Click({
                     }
                     # The pack may ship its own server.properties over ours.
                     Set-RconDefaults -PropsPath (Join-Path $dest "server.properties")
-                } catch {
-                    Remove-Item -Recurse -Force $dest
-                    throw
-                }
-                if ($javaVersion) {
+                    if ($javaVersion) {
+                        Set-RunConfigJavaAndRam -Path (Join-Path $dest "run.config.ps1") -JavaVersion $javaVersion -MaxRam $MaxRam
+                    }
+                } else {
+                    $mrpackExe = Join-Path $GsRoot "_shared\tools\mrpack.exe"
+                    $mcVersion = Get-MinecraftVersionFromMrpack -MrpackPath $localFile
+                    $javaVersion = Get-JavaVersionForMinecraft -McVersion $mcVersion
+                    $loader = Get-ModpackLoader -MrpackPath $localFile
+                    if ($loader -ne "fabric") {
+                        throw "This modpack uses $loader, which can't be installed automatically yet (Fabric only). Create the server without a modpack and copy the 'Server Files' in by hand (see README.md)."
+                    }
+
+                    & $mrpackExe $localFile --server-dir $dest
+                    if ($LASTEXITCODE -ne 0) {
+                        throw "mrpack.exe failed installing the modpack (code $LASTEXITCODE)."
+                    }
                     Set-RunConfigJavaAndRam -Path (Join-Path $dest "run.config.ps1") -JavaVersion $javaVersion -MaxRam $MaxRam
                 }
-            } else {
-                $mrpackExe = Join-Path $GsRoot "_shared\tools\mrpack.exe"
-                $mcVersion = Get-MinecraftVersionFromMrpack -MrpackPath $localFile
-                $javaVersion = Get-JavaVersionForMinecraft -McVersion $mcVersion
-                $loader = Get-ModpackLoader -MrpackPath $localFile
-                if ($loader -ne "fabric") {
-                    Remove-Item -Recurse -Force $dest
-                    throw "This modpack uses $loader, which can't be installed automatically yet (Fabric only). Create the server without a modpack and copy the 'Server Files' in by hand (see README.md)."
-                }
-
-                & $mrpackExe $localFile --server-dir $dest
-                if ($LASTEXITCODE -ne 0) {
-                    Remove-Item -Recurse -Force $dest
-                    throw "mrpack.exe failed installing the modpack (code $LASTEXITCODE)."
-                }
-                Set-RunConfigJavaAndRam -Path (Join-Path $dest "run.config.ps1") -JavaVersion $javaVersion -MaxRam $MaxRam
             }
+
+            # Everywhere the server's launcher reads memory from, not just run.config.ps1.
+            . (Join-Path $GsRoot "_shared\scripts\server-settings-helpers.ps1")
+            Set-ServerMaxRam -InstancePath $dest -MaxRam $MaxRam
+
+            Set-Content -Path (Join-Path $dest "eula.txt") -Value "eula=true" -Encoding ascii
+        } catch {
+            # A failed import mustn't leave a half-built server behind: its
+            # name would then be "taken" for the next try.
+            Remove-Item -LiteralPath $dest -Recurse -Force -ErrorAction SilentlyContinue
+            throw
         }
-
-        # Everywhere the server's launcher reads memory from, not just run.config.ps1.
-        . (Join-Path $GsRoot "_shared\scripts\server-settings-helpers.ps1")
-        Set-ServerMaxRam -InstancePath $dest -MaxRam $MaxRam
-
-        Set-Content -Path (Join-Path $dest "eula.txt") -Value "eula=true" -Encoding ascii
         return $Name
     } -ArgumentList $root, $mcRoot, $name, $mrpack, $ram
 })

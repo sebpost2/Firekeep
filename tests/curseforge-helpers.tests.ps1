@@ -76,3 +76,20 @@ Describe "Install-CurseForgeServerZip" {
 
     Remove-Item -Recurse -Force $root -ErrorAction SilentlyContinue
 }
+
+# CurseForge pack files are often named like "Pack [1.20.1].zip"; square
+# brackets are wildcards to Test-Path/Expand-Archive -Path.
+Describe "Install-CurseForgeServerZip with brackets in the file name" {
+    It "installs a zip whose name has square brackets" {
+        $work = Join-Path $env:TEMP ("cf-bracket-" + [Guid]::NewGuid().ToString("N"))
+        New-Item -ItemType Directory -Force -Path (Join-Path $work "files"), (Join-Path $work "dest") | Out-Null
+        Set-Content -Path (Join-Path $work "files\variables.txt") -Value "MINECRAFT_VERSION=1.20.1" -Encoding ascii
+        Compress-Archive -Path (Join-Path $work "files\*") -DestinationPath (Join-Path $work "plain.zip")
+        $zip = Join-Path $work "Pack [1.20.1].zip"
+        [System.IO.File]::Move((Join-Path $work "plain.zip"), $zip)
+        try {
+            Install-CurseForgeServerZip -ZipPath $zip -DestPath (Join-Path $work "dest") | Should Be 17
+            Test-Path (Join-Path $work "dest\variables.txt") | Should Be $true
+        } finally { Remove-Item -LiteralPath $work -Recurse -Force }
+    }
+}

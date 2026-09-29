@@ -36,12 +36,12 @@ function Get-MinecraftVersionFromMrpack {
         [Parameter(Mandatory = $true)][string]$MrpackPath
     )
 
-    if (-not (Test-Path $MrpackPath)) {
+    if (-not (Test-Path -LiteralPath $MrpackPath)) {
         throw "Could not find the .mrpack file at '$MrpackPath'."
     }
 
     Add-Type -AssemblyName System.IO.Compression.FileSystem
-    $zip = [System.IO.Compression.ZipFile]::OpenRead((Resolve-Path $MrpackPath))
+    $zip = [System.IO.Compression.ZipFile]::OpenRead((Resolve-Path -LiteralPath $MrpackPath).Path)
     try {
         $entry = $zip.GetEntry("modrinth.index.json")
         if (-not $entry) {
@@ -76,12 +76,12 @@ function Get-ModpackLoader {
         [Parameter(Mandatory = $true)][string]$MrpackPath
     )
 
-    if (-not (Test-Path $MrpackPath)) {
+    if (-not (Test-Path -LiteralPath $MrpackPath)) {
         throw "Could not find the .mrpack file at '$MrpackPath'."
     }
 
     Add-Type -AssemblyName System.IO.Compression.FileSystem
-    $zip = [System.IO.Compression.ZipFile]::OpenRead((Resolve-Path $MrpackPath))
+    $zip = [System.IO.Compression.ZipFile]::OpenRead((Resolve-Path -LiteralPath $MrpackPath).Path)
     try {
         $entry = $zip.GetEntry("modrinth.index.json")
         if (-not $entry) {

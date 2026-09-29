@@ -67,7 +67,7 @@ function Install-CurseForgeServerZip {
     $tmp = Join-Path $env:TEMP ("curseforge-import-" + [Guid]::NewGuid().ToString("N"))
     New-Item -ItemType Directory -Force -Path $tmp | Out-Null
     try {
-        Expand-Archive -Path $ZipPath -DestinationPath $tmp -Force
+        Expand-Archive -LiteralPath $ZipPath -DestinationPath $tmp -Force
 
         $marker = Get-ChildItem -Path $tmp -Recurse -File -ErrorAction SilentlyContinue | Where-Object {
             $_.Name -eq "variables.txt" -or
