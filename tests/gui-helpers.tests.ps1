@@ -276,15 +276,47 @@ Describe "Get-StartupFailure" {
     # is the only signal that startup is over.
     It "names the client-only mod behind an 'invalid dist' crash" {
         $text = @(
-            "Attempted to load class net/minecraft/client/gui/screens/Screen for invalid dist DEDICATED_SERVER",
             "-- MOD oculus --",
             "Details:",
             "`tMod File: /D:/3_Hobbies/GameServers/Minecraft/servers/Arcadia RPG/mods/oculus-mc1.20.1-1.8.0.jar",
+            "`tFailure message: Oculus (oculus) encountered an error",
+            "`t`tjava.lang.RuntimeException: Attempted to load class net/minecraft/client/gui/screens/Screen for invalid dist DEDICATED_SERVER",
+            "-- System Details --",
             "Failed to start the minecraft server"
         ) -join "`n"
         $msg = Get-StartupFailure -ConsoleText $text
         $msg | Should Match "only works in the game client"
         $msg | Should Match "oculus-mc1\.20\.1-1\.8\.0\.jar"
+    }
+
+    It "blames the mod whose mixin failed, not the mod its crash report names" {
+            $text = @(
+                "[19:53:16] [main/ERROR] [ne.mi.fm.lo.RuntimeDistCleaner/DISTXFORM]: Attempted to load class net/minecraft/client/Minecraft for invalid dist DEDICATED_SERVER",
+                "[19:53:16] [main/WARN] [mixin/]: @Mixin target net.minecraft.client.Minecraft was not found fragmentum.mixins.json:MixinMinecraft from mod fragmentum",
+                "[19:53:43] [main/WARN] [ne.mi.ja.se.JarSelector/]: Attempted to select a dependency jar for JarJar which was passed in as source: curios. Using Mod File: D:\srv\mods\curios-forge-5.9.1.jar",
+                "[19:53:29] [modloading-worker-0/FATAL] [mixin/]: Mixin apply for mod shouldersurfing failed shouldersurfing.forge.compat.mixins.json:create.ContraptionHandlerClientMixin_6_0_0 from mod shouldersurfing -> com.simibubi.create.content.contraptions.ContraptionHandlerClient",
+                "---- Minecraft Crash Report ----",
+                "-- MOD create --",
+                "Details:",
+                "`tMod File: /D:/srv/mods/create-1.20.1-6.0.8.jar",
+                "`tFailure message: Create (create) has failed to load correctly",
+                "`t`torg.spongepowered.asm.mixin.transformer.throwables.MixinTransformerError: An unexpected critical error was encountered",
+                "-- System Details --",
+                "Failed to start the minecraft server"
+            ) -join "`n"
+        $msg = Get-StartupFailure -ConsoleText $text
+        $msg | Should Match "'shouldersurfing'"
+        $msg | Should Not Match "create-1"
+    }
+
+    It "ignores harmless 'invalid dist' warnings when something else failed" {
+        $text = @(
+            "[19:53:16] [main/ERROR] [ne.mi.fm.lo.RuntimeDistCleaner/DISTXFORM]: Attempted to load class net/minecraft/client/Minecraft for invalid dist DEDICATED_SERVER",
+            "Missing or unsupported mandatory dependencies:",
+            "`tMod ID: 'create', Requested by: 'create_enchantment_industry', Expected range: '[6.0.8,6.0.9)'",
+            "Failed to start the minecraft server"
+        ) -join "`n"
+        Get-StartupFailure -ConsoleText $text | Should Match "'create_enchantment_industry' needs 'create'"
     }
 
     It "names the mod whose mixins failed to apply" {
@@ -514,12 +546,37 @@ Describe "Get-ClientOnlyModJar" {
 
     function New-Instance { $d = Join-Path $env:TEMP ("clientonly-" + [Guid]::NewGuid().ToString("N")); New-Item -ItemType Directory -Force -Path (Join-Path $d "mods") | Out-Null; return $d }
 
-    It "takes the jar from the Mod File line after an 'invalid dist' crash" {
+    # "invalid dist" log lines are often harmless warnings, and "Mod File:"
+    # shows up in ordinary log lines too - so neither is a culprit on its own.
+    It "doesn't guess from 'invalid dist' log lines outside a crash report section" {
         $dir = New-Instance
         try {
             New-ModJar (Join-Path $dir "mods") "oculus-mc1.20.1-1.8.0.jar" "oculus"
             $text = "Mod File: /D:/srv/mods/other.jar`nAttempted to load class net/minecraft/client/Minecraft for invalid dist DEDICATED_SERVER`n-- MOD oculus --`n`tMod File: /D:/srv/mods/oculus-mc1.20.1-1.8.0.jar`nFailed to start the minecraft server"
-            Get-ClientOnlyModJar -InstancePath $dir -ConsoleText $text | Should Be "oculus-mc1.20.1-1.8.0.jar"
+            Get-ClientOnlyModJar -InstancePath $dir -ConsoleText $text | Should Be $null
+        } finally { Remove-Item -Recurse -Force $dir }
+    }
+
+    It "offers the mod whose mixin failed, not the mod its crash report names (real Arcadia crash)" {
+        $dir = New-Instance
+        try {
+            New-ModJar (Join-Path $dir "mods") "create-1.20.1-6.0.8.jar" "create"
+            New-ModJar (Join-Path $dir "mods") "ShoulderSurfing-Forge-1.20.1-5.0.10.jar" "shouldersurfing"
+            $text = @(
+                "[19:53:16] [main/ERROR] [ne.mi.fm.lo.RuntimeDistCleaner/DISTXFORM]: Attempted to load class net/minecraft/client/Minecraft for invalid dist DEDICATED_SERVER",
+                "[19:53:16] [main/WARN] [mixin/]: @Mixin target net.minecraft.client.Minecraft was not found fragmentum.mixins.json:MixinMinecraft from mod fragmentum",
+                "[19:53:43] [main/WARN] [ne.mi.ja.se.JarSelector/]: Attempted to select a dependency jar for JarJar which was passed in as source: curios. Using Mod File: D:\srv\mods\curios-forge-5.9.1.jar",
+                "[19:53:29] [modloading-worker-0/FATAL] [mixin/]: Mixin apply for mod shouldersurfing failed shouldersurfing.forge.compat.mixins.json:create.ContraptionHandlerClientMixin_6_0_0 from mod shouldersurfing -> com.simibubi.create.content.contraptions.ContraptionHandlerClient",
+                "---- Minecraft Crash Report ----",
+                "-- MOD create --",
+                "Details:",
+                "`tMod File: /D:/srv/mods/create-1.20.1-6.0.8.jar",
+                "`tFailure message: Create (create) has failed to load correctly",
+                "`t`torg.spongepowered.asm.mixin.transformer.throwables.MixinTransformerError: An unexpected critical error was encountered",
+                "-- System Details --",
+                "Failed to start the minecraft server"
+            ) -join "`n"
+            Get-ClientOnlyModJar -InstancePath $dir -ConsoleText $text | Should Be "ShoulderSurfing-Forge-1.20.1-5.0.10.jar"
         } finally { Remove-Item -Recurse -Force $dir }
     }
 
@@ -573,7 +630,7 @@ Describe "Get-ClientOnlyModJar" {
     It "returns null when the named jar isn't in mods" {
         $dir = New-Instance
         try {
-            $text = "for invalid dist DEDICATED_SERVER`n`tMod File: /D:/srv/mods/gone.jar"
+            $text = "-- MOD gone --`n`tMod File: /D:/srv/mods/gone.jar`n`t`tjava.lang.RuntimeException: Attempted to load class x for invalid dist DEDICATED_SERVER`n-- System Details --"
             Get-ClientOnlyModJar -InstancePath $dir -ConsoleText $text | Should Be $null
         } finally { Remove-Item -Recurse -Force $dir }
     }

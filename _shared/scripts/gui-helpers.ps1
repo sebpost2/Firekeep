@@ -188,7 +188,9 @@ function Get-InvalidDistModFile {
     foreach ($section in ($ConsoleText -split '(?m)^(?=-- )')) {
         if ($section.StartsWith("-- MOD ") -and $section.Contains($marker) -and $section -match $modFile) { return $Matches[1] }
     }
-    if ($ConsoleText.Substring($at) -match $modFile) { return $Matches[1] }
+    # No guessing outside a crash report section: "invalid dist" log lines
+    # are often harmless warnings, and "Mod File:" appears in ordinary log
+    # lines too - a guess here once offered to remove Create and curios.
     return $null
 }
 
@@ -222,15 +224,15 @@ function Get-StartupFailure {
     if ($ConsoleText -match 'jvm\.cfg|could not find java\.dll') {
         return "This server's Java install is broken. Start it again - Firekeep repairs Java on the next start."
     }
-    if ($ConsoleText -match 'invalid dist DEDICATED_SERVER') {
-        $jar = Get-InvalidDistModFile -ConsoleText $ConsoleText
-        if ($jar) {
-            return "A mod that only works in the game client stopped the server: $jar. Move that file out of the server's mods folder and start again."
-        }
-        return "A mod that only works in the game client stopped the server. The crash report names it - move that mod out of the server's mods folder and start again."
-    }
+    # A fatal mixin failure names the real culprit; the crash report blames
+    # whichever mod's class was loading at the time (e.g. Create when
+    # ShoulderSurfing's Create mixin failed), so this is checked first.
     if ($ConsoleText -match 'Mixin apply for mod ([\w-]+) failed') {
         return "The mod '$($Matches[1])' failed to load on the server - it's probably client-only. Move it out of the server's mods folder and start again."
+    }
+    $jar = Get-InvalidDistModFile -ConsoleText $ConsoleText
+    if ($jar) {
+        return "A mod that only works in the game client stopped the server: $jar. Move that file out of the server's mods folder and start again."
     }
     if ($ConsoleText -match "Mod ID: '([^']+)', Requested by: '([^']+)'") {
         return "The mod '$($Matches[2])' needs '$($Matches[1])', which isn't in the server's mods folder."
@@ -349,9 +351,11 @@ function Get-ClientOnlyModJar {
         [AllowEmptyString()][string]$ConsoleText = ""
     )
     $modsDir = Join-Path $InstancePath "mods"
-    $jar = Get-InvalidDistModFile -ConsoleText $ConsoleText
-    if ($jar) {
-        if (Test-Path -LiteralPath (Join-Path $modsDir $jar)) { return $jar }
+    # Same order as Get-StartupFailure: a fatal mixin failure first (it names
+    # the real culprit), then an "invalid dist" failure inside a crash section.
+    if ($ConsoleText -notmatch 'Mixin apply for mod ([\w-]+) failed') {
+        $jar = Get-InvalidDistModFile -ConsoleText $ConsoleText
+        if ($jar -and (Test-Path -LiteralPath (Join-Path $modsDir $jar))) { return $jar }
         return $null
     }
     if ($ConsoleText -match 'Mixin apply for mod ([\w-]+) failed') {
