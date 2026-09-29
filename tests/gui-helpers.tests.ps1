@@ -779,6 +779,21 @@ Describe "Client-only mods named by 'Failed to create mod instance' errors" {
         try { Get-ClientOnlyModJar -InstancePath $dir -ConsoleText $text | Should Be "oculus-mc1.20.1-1.8.0.jar" } finally { Remove-Item -Recurse -Force $dir }
     }
 
+    # Same crash, second wording (DeceasedCraft, a later start): a missing
+    # client class shows up as NoClassDefFoundError/ClassNotFoundException.
+    It "treats a missing net.minecraft.client class as a client-only cause" {
+        $dir = New-Instance @("controllable-forge-1.20.1-0.21.7.jar", "framework-forge-1.20.1-0.7.15.jar")
+        $text = @(
+            "[20:21:31] [modloading-worker-0/ERROR] [ne.mi.fm.ja.FMLModContainer/LOADING]: Failed to create mod instance. ModID: framework, class com.mrcrayfish.framework.FrameworkForge",
+            "java.lang.NoClassDefFoundError: net/minecraft/client/gui/components/toasts/Toast",
+            "`tat com.mrcrayfish.controllable.Controllable.<init>(Controllable.java:40) ~[controllable-forge-1.20.1-0.21.7.jar%23466!/:1.20.1-0.21.7] {re:classloading}",
+            "`tat com.mrcrayfish.framework.FrameworkForge.<init>(FrameworkForge.java:50) ~[framework-forge-1.20.1-0.7.15.jar%23538!/:1.20.1-0.7.15] {re:classloading}",
+            "Caused by: java.lang.ClassNotFoundException: net.minecraft.client.gui.components.toasts.Toast",
+            "[20:21:33] [main/ERROR] [minecraft/Main]: Failed to start the minecraft server"
+        ) -join "`n"
+        try { Get-ClientOnlyModJar -InstancePath $dir -ConsoleText $text | Should Be "controllable-forge-1.20.1-0.21.7.jar" } finally { Remove-Item -Recurse -Force $dir }
+    }
+
     It "ignores a failed mod whose error isn't about the client" {
         $text = @(
             "[20:11:52] [modloading-worker-0/ERROR] [ne.mi.fm.ja.FMLModContainer/LOADING]: Failed to create mod instance. ModID: brokenmod, class a.b.C",

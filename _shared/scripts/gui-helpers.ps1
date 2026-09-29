@@ -423,7 +423,9 @@ function Get-FailedModInstanceJar {
         $modId = $Matches[2]
         $block = @()
         for ($j = $i + 1; $j -lt $lines.Count -and $lines[$j] -notmatch '^\[\d\d:\d\d:\d\d\]'; $j++) { $block += $lines[$j] }
-        if (($block -join "`n") -notmatch 'invalid dist DEDICATED_SERVER|client ?side only|client-only') { continue }
+        # A client class the server doesn't have, however Java words it.
+        $clientCause = 'invalid dist DEDICATED_SERVER|client ?side only|client-only|(ClassNotFoundException|NoClassDefFoundError|ClassMetadataNotFoundException):? net[./]minecraft[./]client[./]|com[./]mojang[./]blaze3d'
+        if (($block -join "`n") -notmatch $clientCause) { continue }
         foreach ($frame in $block) {
             if ($frame -match '^\s*at .*~\[([^\]%/]+\.jar)' -and (Test-Path -LiteralPath (Join-Path $modsDir $Matches[1]))) { return $Matches[1] }
         }
