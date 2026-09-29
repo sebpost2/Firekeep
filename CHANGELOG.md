@@ -3,15 +3,35 @@
 All notable changes to this project are documented here. Loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [1.2.0] - 2026-09-28
 
 ### Added
-- Add Server imports regular CurseForge modpack downloads (Forge, Minecraft
-  1.17+), not just
-  "Server Files": downloads the mods itself, copies the pack's settings
-  with a byte-for-byte check, and installs Forge. Mods that can't be
-  downloaded are listed with links (Start waits until they're added), and a
-  mod the server refuses to load can be moved aside with one click.
+- Add Server imports regular CurseForge modpack downloads (Forge packs for
+  Minecraft 1.17 and newer), not just "Server Files": it downloads the
+  mods itself (6 at a time, with progress shown), copies the pack's
+  settings with a byte-for-byte check, and installs Forge. Resource packs,
+  shaders and optional mods are skipped, like the CurseForge app does.
+- Mods that can't be downloaded are listed in `MISSING-MODS.txt` with a
+  link to each (Home shows **Show missing mods**); Start waits until
+  they're added.
+- When the server refuses a mod that only works in the game client, Home
+  names it and offers **Move it aside and start again** (after you
+  confirm; the jar goes to `_excluded\client-only`, never deleted). This
+  also covers mods that need one already moved aside.
+- NeoForge, Fabric, and pre-1.17 Forge packs are refused up front with a
+  clear message instead of failing after a long download.
+
+### Fixed
+- Modpack files with `[brackets]` in their name (common on CurseForge) were
+  reported as missing - for CurseForge, `.mrpack` and world imports alike.
+- A failed Add Server import could leave a half-built server behind,
+  blocking its name for the next try.
+- Packs with the "Default Server Properties" mod turned RCON off at
+  startup, so Firekeep showed the running server as stopped and couldn't
+  stop it.
+- Start-failure messages no longer blame the wrong mod when harmless
+  client-class warnings appear in the log, and name the mod that actually
+  failed (e.g. ShoulderSurfing, not Create; Controllable, not Framework).
 
 ## [1.1.0] - 2026-09-28
 
