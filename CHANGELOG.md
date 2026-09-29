@@ -3,6 +3,20 @@
 All notable changes to this project are documented here. Loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.3.0] - 2026-09-29
+
+### Added
+- Regular CurseForge modpack downloads can now be NeoForge packs too
+  (Minecraft 1.20.2 and newer), e.g. All the Mods 10: Firekeep installs
+  NeoForge instead of Forge. **Move it aside and start again** also finds
+  NeoForge mods.
+
+### Changed
+- **Move it aside** is never offered for a mod that adds blocks, items or
+  recipes - it could be part of quests and recipes, and players' games
+  wouldn't match the server. Home explains instead, and suggests asking the
+  pack's author for a server version.
+
 ## [1.2.1] - 2026-09-29
 
 ### Fixed
