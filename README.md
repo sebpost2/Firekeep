@@ -68,8 +68,8 @@ extract it anywhere, and double-click `Start.bat`.
    files in the server's `mods` folder and press Start. If the server
    refuses to start because of a mod that only works in the game (not on a
    server), Home names it and offers **Move it aside and start again**.
-   Only Forge modpacks for Minecraft 1.17 and newer can be imported this way
-   for now.
+   Forge modpacks for Minecraft 1.17 and newer and NeoForge modpacks for
+   1.20.2 and newer can be imported this way (not Fabric or Quilt yet).
 
 > **Important:** automatic installation currently only works with **Fabric**
 > `.mrpack` modpacks. If the `.mrpack` is Forge, Quilt, or NeoForge, it'll

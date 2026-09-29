@@ -147,8 +147,9 @@ function Get-OverridesFolderName {
     return $name
 }
 
-# Reads manifest.json from a client export. Forge only: any other loader
-# throws a message meant for the user, before anything is downloaded.
+# Reads manifest.json from a client export. Forge and NeoForge only: any
+# other loader throws a message meant for the user, before anything is
+# downloaded.
 # Optional files ("required": false) are left out - the CurseForge app
 # doesn't install them by default, so players won't have them.
 function Read-CurseForgeManifest {
@@ -164,20 +165,25 @@ function Read-CurseForgeManifest {
     $loader = ($loaders | Where-Object { $_.primary } | Select-Object -First 1)
     if (-not $loader) { $loader = $loaders | Select-Object -First 1 }
     $loaderId = "$($loader.id)"
-    if ($loaderId -notmatch '^forge-(.+)$') {
-        $names = @{ neoforge = "NeoForge"; fabric = "Fabric"; quilt = "Quilt" }
+    if ($loaderId -notmatch '^(forge|neoforge)-(.+)$') {
+        $names = @{ fabric = "Fabric"; quilt = "Quilt" }
         $kind = ($loaderId -split '-')[0]
         $label = if ($names.ContainsKey($kind)) { $names[$kind] } else { $kind }
-        throw "This modpack uses $label, which Firekeep can't import yet (Forge only for now)."
+        throw "This modpack uses $label, which Firekeep can't import yet (Forge and NeoForge only for now)."
     }
-    $forgeVersion = $Matches[1]
+    $loaderName = if ($Matches[1] -eq "neoforge") { "NeoForge" } else { "Forge" }
+    $loaderVersion = $Matches[2]
 
     # Forge installers before 1.17 make no run.bat, which is what start.ps1
     # launches - so refuse now rather than after downloading every mod.
+    # NeoForge for 1.20.1 is a different, older installer (net.neoforged:forge).
     $mcVersion = "$($json.minecraft.version)"
-    $parts = $mcVersion -split '\.'
-    if ([int]$parts[0] -eq 1 -and [int]$parts[1] -lt 17) {
+    $parts = @(($mcVersion -split '\.') | ForEach-Object { [int]$_ }) + @(0, 0)
+    if ($loaderName -eq "Forge" -and $parts[0] -eq 1 -and $parts[1] -lt 17) {
         throw "This modpack is for Minecraft $mcVersion - Firekeep can only import Forge modpacks for Minecraft 1.17 and newer."
+    }
+    if ($loaderName -eq "NeoForge" -and $parts[0] -eq 1 -and ($parts[1] -lt 20 -or ($parts[1] -eq 20 -and $parts[2] -lt 2))) {
+        throw "This modpack is for Minecraft $mcVersion - Firekeep can only import NeoForge modpacks for Minecraft 1.20.2 and newer."
     }
 
     $files = @($json.files | Where-Object { $_.required -ne $false } | ForEach-Object {
@@ -185,10 +191,11 @@ function Read-CurseForgeManifest {
     })
     $overrides = Get-OverridesFolderName $json
     return [pscustomobject]@{
-        McVersion    = "$($json.minecraft.version)"
-        ForgeVersion = $forgeVersion
-        Files        = $files
-        OverridesDir = $overrides
+        McVersion     = $mcVersion
+        Loader        = $loaderName
+        LoaderVersion = $loaderVersion
+        Files         = $files
+        OverridesDir  = $overrides
     }
 }
 
@@ -444,24 +451,42 @@ function Get-MissingModDownloads {
     return $missing
 }
 
-# Downloads Forge's official installer and runs --installServer into
-# $DestPath. Success means run.bat exists afterwards (start.ps1 launches it).
-# On failure the installer's output is kept in %TEMP% and named in the error.
-function Install-ForgeServer {
+# The official server installer for Forge or NeoForge. NeoForge versions
+# don't repeat the Minecraft version, Forge's do.
+function Get-ModLoaderInstallerUrl {
     param(
+        [Parameter(Mandatory = $true)][ValidateSet("Forge", "NeoForge")][string]$Loader,
         [Parameter(Mandatory = $true)][string]$McVersion,
-        [Parameter(Mandatory = $true)][string]$ForgeVersion,
+        [Parameter(Mandatory = $true)][string]$Version
+    )
+    if ($Loader -eq "NeoForge") {
+        return "https://maven.neoforged.net/releases/net/neoforged/neoforge/$Version/neoforge-$Version-installer.jar"
+    }
+    $full = "$McVersion-$Version"
+    return "https://maven.minecraftforge.net/net/minecraftforge/forge/$full/forge-$full-installer.jar"
+}
+
+# Downloads Forge's or NeoForge's official installer and runs
+# --installServer into $DestPath. Success means run.bat exists afterwards
+# (start.ps1 launches it). On failure the installer's output is kept in
+# %TEMP% and named in the error. -InstallerUrl exists for tests.
+function Install-ModLoaderServer {
+    param(
+        [Parameter(Mandatory = $true)][ValidateSet("Forge", "NeoForge")][string]$Loader,
+        [Parameter(Mandatory = $true)][string]$McVersion,
+        [Parameter(Mandatory = $true)][string]$Version,
         [Parameter(Mandatory = $true)][string]$DestPath,
         [Parameter(Mandatory = $true)][string]$JavaExe,
-        [string]$MavenBase = "https://maven.minecraftforge.net"
+        [string]$InstallerUrl
     )
-    $full = "$McVersion-$ForgeVersion"
-    $installer = Join-Path $env:TEMP ("forge-$full-installer-" + [Guid]::NewGuid().ToString("N") + ".jar")
-    $logPath = Join-Path $env:TEMP ("forge-$full-install-" + [Guid]::NewGuid().ToString("N") + ".log")
+    if (-not $InstallerUrl) { $InstallerUrl = Get-ModLoaderInstallerUrl -Loader $Loader -McVersion $McVersion -Version $Version }
+    $full = "$($Loader.ToLower())-$McVersion-$Version"
+    $installer = Join-Path $env:TEMP ("$full-installer-" + [Guid]::NewGuid().ToString("N") + ".jar")
+    $logPath = Join-Path $env:TEMP ("$full-install-" + [Guid]::NewGuid().ToString("N") + ".log")
     try {
-        Save-UrlToFile -Url "$MavenBase/net/minecraftforge/forge/$full/forge-$full-installer.jar" -Path $installer
+        Save-UrlToFile -Url $InstallerUrl -Path $installer
     } catch {
-        throw "Couldn't download Forge $ForgeVersion's installer - check the internet connection and try again. ($($_.Exception.Message))"
+        throw "Couldn't download $Loader $Version's installer - check the internet connection and try again. ($($_.Exception.Message))"
     }
     try {
         $ErrorActionPreference = "Continue"   # the installer logs to stderr
@@ -472,16 +497,17 @@ function Install-ForgeServer {
         Remove-Item -LiteralPath "$installer.log" -Force -ErrorAction SilentlyContinue
     }
     if (-not (Test-Path (Join-Path $DestPath "run.bat"))) {
-        throw "Forge's installer failed - its log is at $logPath"
+        throw "$Loader's installer failed - its log is at $logPath"
     }
     $logsDir = Join-Path $DestPath "logs"
     New-Item -ItemType Directory -Force -Path $logsDir | Out-Null
-    Move-Item -LiteralPath $logPath -Destination (Join-Path $logsDir "forge-installer.log") -Force
+    Move-Item -LiteralPath $logPath -Destination (Join-Path $logsDir "$($Loader.ToLower())-installer.log") -Force
 }
 
 # Builds a server from a CurseForge client export into $DestPath:
 # manifest -> resolve every file's name -> download the .jar ones into mods\
-# -> copy + verify overrides\ (minus resource/shader packs) -> Java -> Forge.
+# -> copy + verify overrides\ (minus resource/shader packs) -> Java ->
+# Forge or NeoForge.
 # Mods that couldn't be fetched go to MISSING-MODS.txt instead of failing
 # the import - unless nothing at all could be fetched, which means no
 # connection. -BaseUrl and -SkipServerInstall exist for tests.
@@ -552,8 +578,8 @@ function Install-CurseForgeClientExport {
             $reason = ($javaOutput | ForEach-Object { if ($_ -is [System.Management.Automation.ErrorRecord]) { $_.Exception.Message } else { "$_" } }) -join " "
             throw "Firekeep couldn't install Java $javaVersion - check the internet connection and try again. ($reason)"
         }
-        Write-Progress -Activity "Installing Forge $($manifest.ForgeVersion)" -Status " "
-        Install-ForgeServer -McVersion $manifest.McVersion -ForgeVersion $manifest.ForgeVersion -DestPath $DestPath `
+        Write-Progress -Activity "Installing $($manifest.Loader) $($manifest.LoaderVersion)" -Status " "
+        Install-ModLoaderServer -Loader $manifest.Loader -McVersion $manifest.McVersion -Version $manifest.LoaderVersion -DestPath $DestPath `
             -JavaExe (Join-Path $McRoot "tools\java\$javaVersion\bin\java.exe")
     }
 

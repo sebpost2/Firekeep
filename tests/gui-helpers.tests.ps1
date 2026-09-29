@@ -555,13 +555,21 @@ Describe "Get-ClientOnlyModJar" {
     Add-Type -AssemblyName System.IO.Compression, System.IO.Compression.FileSystem
 
     # A fake mod jar: a zip whose META-INF/mods.toml declares $ModId.
-    function New-ModJar([string]$Dir, [string]$FileName, [string]$ModId) {
+    function New-ModJar([string]$Dir, [string]$FileName, [string]$ModId, [string]$Toml = "META-INF/mods.toml", [string]$ModuleName, [hashtable]$Entries = @{}) {
         $path = Join-Path $Dir $FileName
         $stream = [System.IO.File]::Open($path, [System.IO.FileMode]::CreateNew)
         $zip = New-Object System.IO.Compression.ZipArchive($stream, [System.IO.Compression.ZipArchiveMode]::Create)
         try {
-            $w = New-Object System.IO.StreamWriter($zip.CreateEntry("META-INF/mods.toml").Open())
+            foreach ($name in $Entries.Keys) {
+                $out = $zip.CreateEntry($name).Open()
+                try { $bytes = [byte[]]$Entries[$name]; $out.Write($bytes, 0, $bytes.Length) } finally { $out.Dispose() }
+            }
+            $w = New-Object System.IO.StreamWriter($zip.CreateEntry($Toml).Open())
             try { $w.Write("modLoader=`"javafml`"`n[[mods]]`nmodId=`"$ModId`"`nversion=`"1.0`"`n") } finally { $w.Dispose() }
+            if ($ModuleName) {
+                $w = New-Object System.IO.StreamWriter($zip.CreateEntry("META-INF/MANIFEST.MF").Open())
+                try { $w.Write("Manifest-Version: 1.0`r`nFMLModType: LIBRARY`r`nAutomatic-Module-Name: $ModuleName`r`n") } finally { $w.Dispose() }
+            }
         } finally { $zip.Dispose(); $stream.Dispose() }
     }
 
@@ -599,6 +607,103 @@ Describe "Get-ClientOnlyModJar" {
             ) -join "`n"
             Get-ClientOnlyModJar -InstancePath $dir -ConsoleText $text | Should Be "ShoulderSurfing-Forge-1.20.1-5.0.10.jar"
         } finally { Remove-Item -Recurse -Force $dir }
+    }
+
+    # NeoForge 1.20.5+ mods declare their id in neoforge.mods.toml instead.
+    It "finds a NeoForge mod by the id in its neoforge.mods.toml" {
+        $dir = New-Instance
+        try {
+            New-ModJar (Join-Path $dir "mods") "ShoulderSurfing-NeoForge-1.21.1-4.9.jar" "shouldersurfing" "META-INF/neoforge.mods.toml"
+            $text = "[main/FATAL] [mixin/]: Mixin apply for mod shouldersurfing failed shouldersurfing.mixins.json:MixinCamera`nFailed to start the minecraft server"
+            Get-ClientOnlyModJar -InstancePath $dir -ConsoleText $text | Should Be "ShoulderSurfing-NeoForge-1.21.1-4.9.jar"
+        } finally { Remove-Item -Recurse -Force $dir }
+    }
+
+    # Real ATM10 (NeoForge 21.1) boot: Sodium's early "service" layer needs
+    # LWJGL, which servers don't have, and dies before any mod loads. The
+    # frame names a module (the jar's Automatic-Module-Name), not a jar.
+    It "finds the jar behind a NeoForge service-layer crash on a client class (real ATM10 crash)" {
+        $dir = New-Instance
+        try {
+            New-ModJar (Join-Path $dir "mods") "sodium-neoforge-0.8.13+mc1.21.1.jar" "sodium" "META-INF/neoforge.mods.toml" "sodium_service"
+            New-ModJar (Join-Path $dir "mods") "create-1.21.1-6.0.4.jar" "create" "META-INF/neoforge.mods.toml"
+            $text = @(
+                "[10:17:05.322] [main/WARN] [loading.FMLConfig/]: ****************************************************************************************",
+                "Exception in thread `"main`" java.lang.NoClassDefFoundError: org/lwjgl/Version",
+                "`tat LAYER SERVICE/sodium_service@0.8.13+mc1.21.1/net.caffeinemc.mods.sodium.client.compatibility.checks.PreLaunchChecks.isUsingKnownCompatibleLwjglVersion(PreLaunchChecks.java:136)",
+                "`tat LAYER SERVICE/sodium_service@0.8.13+mc1.21.1/net.caffeinemc.mods.sodium.service.SodiumWorkarounds.bootstrap(SodiumWorkarounds.java:19)",
+                "`tat MC-BOOTSTRAP/fml_loader@4.0.44/net.neoforged.fml.loading.ImmediateWindowHandler.lambda`$load`$2(ImmediateWindowHandler.java:47)",
+                "`tat java.base/java.util.stream.AbstractPipeline.wrapAndCopyInto(AbstractPipeline.java:499)",
+                "`tat cpw.mods.bootstraplauncher@2.0.2/cpw.mods.bootstraplauncher.BootstrapLauncher.main(BootstrapLauncher.java:69)",
+                "Caused by: java.lang.ClassNotFoundException: org.lwjgl.Version",
+                "`tat java.base/jdk.internal.loader.BuiltinClassLoader.loadClass(BuiltinClassLoader.java:641)",
+                "`t... 26 more",
+                "Press any key to continue . . . "
+            ) -join "`r`n"
+            Get-ClientOnlyModJar -InstancePath $dir -ConsoleText $text | Should Be "sodium-neoforge-0.8.13+mc1.21.1.jar"
+            Get-StartupFailure -ConsoleText $text -LauncherExited $true -InstancePath $dir | Should Match "only works in the game client.*sodium-neoforge-0\.8\.13\+mc1\.21\.1\.jar"
+        } finally { Remove-Item -Recurse -Force $dir }
+    }
+
+    # Real ATM10 boot after Sodium was moved aside: Sodium Extra's mixin
+    # plugin needs a Sodium client class. NeoForge prints this stack through
+    # log4j, so every line has a timestamp prefix.
+    It "finds the mod behind a log4j-printed NeoForge crash on a missing client class (real ATM10 crash)" {
+        $dir = New-Instance
+        try {
+            New-ModJar (Join-Path $dir "mods") "sodium-extra-neoforge-0.9.4+mc1.21.1.jar" "sodium_extra" "META-INF/neoforge.mods.toml"
+            $p = "[10:32:24.946] [main/INFO] [STDERR/]: [java.lang.Throwable:printStackTrace:660]: "
+            $text = @(
+                "[10:32:24.932] [main/WARN] [mixin/]: Reference map 'openloader.refmap.json' for openloader.mixins.json could not be read.",
+                "Exception in thread `"main`" [10:32:24.945] [main/INFO] [STDERR/]: [java.lang.ThreadGroup:uncaughtException:698]: java.lang.RuntimeException: java.lang.NoClassDefFoundError: net/caffeinemc/mods/sodium/client/services/PlatformRuntimeInformation ",
+                "[10:32:24.945] [main/INFO] [STDERR/]: [java.lang.ThreadGroup:uncaughtException:698]: `tat MC-BOOTSTRAP/cpw.mods.modlauncher@11.0.5/cpw.mods.modlauncher.LaunchServiceHandlerDecorator.launch(LaunchServiceHandlerDecorator.java:32) ",
+                "${p}Caused by: java.lang.NoClassDefFoundError: net/caffeinemc/mods/sodium/client/services/PlatformRuntimeInformation ",
+                "${p}`tat TRANSFORMER/sodium_extra@0.9.4+mc1.21.1/me.flashyreese.mods.sodiumextra.client.SodiumExtraClientMod.mixinConfig(SodiumExtraClientMod.java:80) ",
+                "${p}`tat MC-BOOTSTRAP/org.spongepowered.mixin/org.spongepowered.asm.mixin.transformer.PluginHandle.onLoad(PluginHandle.java:119) ",
+                "${p}`tat java.base/java.lang.Class.forName(Class.java:627) ",
+                "${p}`t... 8 more ",
+                "Press any key to continue . . . "
+            ) -join "`r`n"
+            Get-ClientOnlyModJar -InstancePath $dir -ConsoleText $text | Should Be "sodium-extra-neoforge-0.9.4+mc1.21.1.jar"
+        } finally { Remove-Item -Recurse -Force $dir }
+    }
+
+    # A mod that adds blocks, items or recipes can be part of quests and
+    # recipes, and players' games would no longer match the server - so it
+    # is never offered for setting aside, whatever the crash says.
+    Context "a refused mod that adds content to the game" {
+        $mixinCrash = "[main/FATAL] [mixin/]: Mixin apply for mod coolmod failed coolmod.mixins.json:MixinCamera`nFailed to start the minecraft server"
+
+        It "isn't offered for setting aside when it adds blocks" {
+            $dir = New-Instance
+            try {
+                New-ModJar (Join-Path $dir "mods") "coolmod-1.0.jar" "coolmod" -Entries @{ "assets/coolmod/blockstates/cool_block.json" = [byte[]]@(123, 125) }
+                Get-ClientOnlyModJar -InstancePath $dir -ConsoleText $mixinCrash | Should Be $null
+                Get-StartupFailure -ConsoleText $mixinCrash -InstancePath $dir | Should Match "coolmod-1\.0\.jar adds items to the game but can't run on a server"
+            } finally { Remove-Item -Recurse -Force $dir }
+        }
+
+        # Sodium's real layout: the mod itself is a jar inside the jar.
+        It "isn't offered when its content is in a jar inside the jar" {
+            $dir = New-Instance
+            try {
+                $innerPath = Join-Path $dir "inner.jar"
+                $s = [System.IO.File]::Open($innerPath, [System.IO.FileMode]::CreateNew)
+                $z = New-Object System.IO.Compression.ZipArchive($s, [System.IO.Compression.ZipArchiveMode]::Create)
+                try { $e = $z.CreateEntry("data/coolmod/recipe/cool_block.json").Open(); $e.WriteByte(123); $e.Dispose() } finally { $z.Dispose(); $s.Dispose() }
+                New-ModJar (Join-Path $dir "mods") "coolmod-1.0.jar" "coolmod" -Entries @{ "META-INF/jarjar/coolmod-content.jar" = [System.IO.File]::ReadAllBytes($innerPath) }
+                Get-ClientOnlyModJar -InstancePath $dir -ConsoleText $mixinCrash | Should Be $null
+            } finally { Remove-Item -Recurse -Force $dir }
+        }
+
+        # Client mods may restyle vanilla items; that isn't content of their own.
+        It "is still offered when it only overrides Minecraft's own item models" {
+            $dir = New-Instance
+            try {
+                New-ModJar (Join-Path $dir "mods") "coolmod-1.0.jar" "coolmod" -Entries @{ "assets/minecraft/models/item/diamond_sword.json" = [byte[]]@(123, 125) }
+                Get-ClientOnlyModJar -InstancePath $dir -ConsoleText $mixinCrash | Should Be "coolmod-1.0.jar"
+            } finally { Remove-Item -Recurse -Force $dir }
+        }
     }
 
     # Real Forge crash reports list "Mod File:" BEFORE the failure message

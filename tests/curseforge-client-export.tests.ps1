@@ -64,7 +64,8 @@ Describe "Read-CurseForgeManifest" {
         try {
             $m = Read-CurseForgeManifest -ZipPath $zip
             $m.McVersion | Should Be "1.20.1"
-            $m.ForgeVersion | Should Be "47.4.20"
+            $m.Loader | Should Be "Forge"
+            $m.LoaderVersion | Should Be "47.4.20"
             $m.Files.Count | Should Be 2
             $m.Files[0].ProjectId | Should Be 336184
             $m.Files[0].FileId | Should Be 5600004
@@ -84,9 +85,20 @@ Describe "Read-CurseForgeManifest" {
         } finally { Remove-Item $zip }
     }
 
-    It "refuses NeoForge with a clear message" {
-        $zip = New-TestZip @{ "manifest.json" = (New-Manifest -Loader "neoforge-21.1.77") }
-        try { { Read-CurseForgeManifest -ZipPath $zip } | Should Throw "uses NeoForge, which Firekeep can't import yet" } finally { Remove-Item $zip }
+    It "reads a NeoForge pack's loader version (real ATM10 manifest id)" {
+        $zip = New-TestZip @{ "manifest.json" = (New-Manifest -Loader "neoforge-21.1.251" -McVersion "1.21.1") }
+        try {
+            $m = Read-CurseForgeManifest -ZipPath $zip
+            $m.Loader | Should Be "NeoForge"
+            $m.LoaderVersion | Should Be "21.1.251"
+        } finally { Remove-Item $zip }
+    }
+
+    # NeoForge for 1.20.1 is the old net.neoforged:forge artifact, with a
+    # different installer - not supported.
+    It "refuses a NeoForge pack for Minecraft 1.20.1 up front" {
+        $zip = New-TestZip @{ "manifest.json" = (New-Manifest -Loader "neoforge-47.1.106" -McVersion "1.20.1") }
+        try { { Read-CurseForgeManifest -ZipPath $zip } | Should Throw "NeoForge modpacks for Minecraft 1.20.2 and newer" } finally { Remove-Item $zip }
     }
 
     # Forge installers before 1.17 make no run.bat, so the import would
@@ -98,7 +110,7 @@ Describe "Read-CurseForgeManifest" {
 
     It "refuses Fabric with a clear message" {
         $zip = New-TestZip @{ "manifest.json" = (New-Manifest -Loader "fabric-0.15.11") }
-        try { { Read-CurseForgeManifest -ZipPath $zip } | Should Throw "uses Fabric" } finally { Remove-Item $zip }
+        try { { Read-CurseForgeManifest -ZipPath $zip } | Should Throw "uses Fabric, which Firekeep can't import yet (Forge and NeoForge only for now)" } finally { Remove-Item $zip }
     }
 }
 
@@ -482,27 +494,63 @@ Describe "Install-CurseForgeClientExport (offline, no Forge)" {
         } finally { Remove-Item $zip; Remove-Item -Recurse -Force $dest }
     }
 
-    It "refuses a non-Forge pack before downloading anything" {
-        $fake = Start-FakeCurseForge -Files $files
-        $zip = New-TestZip @{ "manifest.json" = (New-Manifest -Loader "neoforge-21.1.77" -FilesJson $manifestFiles) }
+    It "imports a NeoForge pack the same way" {
+        $fake = Start-FakeCurseForge -Files @{ "1/10" = $files["1/10"] }
+        $zip = New-TestZip @{
+            "manifest.json"         = (New-Manifest -Loader "neoforge-21.1.251" -McVersion "1.21.1" -FilesJson '[{"projectID":1,"fileID":10,"required":true}]')
+            "overrides/config/d.toml" = "cfg"
+        }
         $dest = New-Dest
         try {
-            { Install-CurseForgeClientExport -ZipPath $zip -DestPath $dest -McRoot $env:TEMP -BaseUrl $fake.BaseUrl -SkipServerInstall } | Should Throw "NeoForge"
+            (Install-CurseForgeClientExport -ZipPath $zip -DestPath $dest -McRoot $env:TEMP -BaseUrl $fake.BaseUrl -SkipServerInstall).MissingCount | Should Be 0
+            Test-Path (Join-Path $dest "mods\GoodMod-1.0.jar") | Should Be $true
+            Test-Path (Join-Path $dest "config\d.toml") | Should Be $true
+        } finally { Stop-FakeCurseForge $fake; Remove-Item $zip; Remove-Item -Recurse -Force $dest }
+    }
+
+    It "refuses an unsupported loader before downloading anything" {
+        $fake = Start-FakeCurseForge -Files $files
+        $zip = New-TestZip @{ "manifest.json" = (New-Manifest -Loader "fabric-0.15.11" -FilesJson $manifestFiles) }
+        $dest = New-Dest
+        try {
+            { Install-CurseForgeClientExport -ZipPath $zip -DestPath $dest -McRoot $env:TEMP -BaseUrl $fake.BaseUrl -SkipServerInstall } | Should Throw "Fabric"
             $fake.Hits.Count | Should Be 0
             @(Get-ChildItem $dest).Count | Should Be 0
         } finally { Stop-FakeCurseForge $fake; Remove-Item $zip; Remove-Item -Recurse -Force $dest }
     }
 }
 
-Describe "Install-ForgeServer" {
+Describe "Get-ModLoaderInstallerUrl" {
+    It "points at Forge's maven" {
+        Get-ModLoaderInstallerUrl -Loader "Forge" -McVersion "1.20.1" -Version "47.4.20" |
+            Should Be "https://maven.minecraftforge.net/net/minecraftforge/forge/1.20.1-47.4.20/forge-1.20.1-47.4.20-installer.jar"
+    }
+
+    # NeoForge versions don't repeat the Minecraft version (checked against
+    # the live maven for ATM10's 21.1.251).
+    It "points at NeoForge's maven" {
+        Get-ModLoaderInstallerUrl -Loader "NeoForge" -McVersion "1.21.1" -Version "21.1.251" |
+            Should Be "https://maven.neoforged.net/releases/net/neoforged/neoforge/21.1.251/neoforge-21.1.251-installer.jar"
+    }
+}
+
+Describe "Install-ModLoaderServer" {
+    function New-Dest { $d = Join-Path $env:TEMP ("cf-loader-" + [Guid]::NewGuid().ToString("N")); New-Item -ItemType Directory -Path $d | Out-Null; return $d }
+
     It "says plainly when Forge's installer can't be downloaded" {
-        $fake = Start-FakeCurseForge -Files @{}
-        $dest = Join-Path $env:TEMP ("cf-forge-" + [Guid]::NewGuid().ToString("N"))
-        New-Item -ItemType Directory -Path $dest | Out-Null
+        $dest = New-Dest
         try {
-            { Install-ForgeServer -McVersion "1.20.1" -ForgeVersion "47.4.20" -DestPath $dest -JavaExe "java.exe" -MavenBase $fake.BaseUrl } |
+            { Install-ModLoaderServer -Loader "Forge" -McVersion "1.20.1" -Version "47.4.20" -DestPath $dest -JavaExe "java.exe" -InstallerUrl "http://localhost:1/x.jar" } |
                 Should Throw "Couldn't download Forge 47.4.20's installer"
-        } finally { Stop-FakeCurseForge $fake; Remove-Item -Recurse -Force $dest }
+        } finally { Remove-Item -Recurse -Force $dest }
+    }
+
+    It "names NeoForge when its installer can't be downloaded" {
+        $dest = New-Dest
+        try {
+            { Install-ModLoaderServer -Loader "NeoForge" -McVersion "1.21.1" -Version "21.1.251" -DestPath $dest -JavaExe "java.exe" -InstallerUrl "http://localhost:1/x.jar" } |
+                Should Throw "Couldn't download NeoForge 21.1.251's installer"
+        } finally { Remove-Item -Recurse -Force $dest }
     }
 }
 

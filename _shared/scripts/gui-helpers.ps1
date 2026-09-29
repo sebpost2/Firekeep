@@ -241,6 +241,14 @@ function Get-StartupFailure {
     if ($ConsoleText -match 'jvm\.cfg|could not find java\.dll') {
         return "This server's Java install is broken. Start it again - Firekeep repairs Java on the next start."
     }
+    # A refused mod that adds items can't be set aside safely (quests,
+    # recipes, players' games) - say so instead of suggesting it.
+    if ($InstancePath) {
+        $refused = Get-RefusedModJar -InstancePath $InstancePath -ConsoleText $ConsoleText
+        if ($refused -and (Test-ModJarAddsContent -Path (Join-Path $InstancePath "mods\$refused"))) {
+            return "$refused adds items to the game but can't run on a server, so it can't be set aside safely. Ask the modpack's author for a server version of the pack."
+        }
+    }
     # A fatal mixin failure names the real culprit; the crash report blames
     # whichever mod's class was loading at the time (e.g. Create when
     # ShoulderSurfing's Create mixin failed), so this is checked first.
@@ -365,11 +373,54 @@ function Get-LaunchLockState {
 }
 
 # The jar a failed start blames for being client-only, so Home can offer to
-# move it aside: the "Mod File:" line that follows an "invalid dist
-# DEDICATED_SERVER" crash, or - when a Mixin failure names only a mod id -
-# the jar in mods\ whose META-INF/mods.toml declares that id. $null when the
-# crash isn't about such a mod or the jar isn't in mods\ (never guesses).
+# move it aside - unless that jar adds blocks, items or recipes (see
+# Test-ModJarAddsContent): those are never set aside. $null otherwise.
 function Get-ClientOnlyModJar {
+    param(
+        [Parameter(Mandatory = $true)][string]$InstancePath,
+        [AllowEmptyString()][string]$ConsoleText = ""
+    )
+    $jar = Get-RefusedModJar -InstancePath $InstancePath -ConsoleText $ConsoleText
+    if ($jar -and (Test-ModJarAddsContent -Path (Join-Path $InstancePath "mods\$jar"))) { return $null }
+    return $jar
+}
+
+# True when a mod jar adds blocks, items or recipes of its own (also inside
+# the jars it bundles under META-INF/jarjar, where e.g. Sodium keeps the mod
+# itself). Such a mod can be in quests and recipes, and players' games would
+# no longer match the server without it. Overriding Minecraft's own models
+# (assets/minecraft/...) doesn't count.
+function Test-ModJarAddsContent {
+    param([Parameter(Mandatory = $true)][string]$Path)
+    Add-Type -AssemblyName System.IO.Compression, System.IO.Compression.FileSystem
+    $contentPattern = '^(assets/(?!minecraft/)[^/]+/(blockstates|models/item)/|data/(?!minecraft/)[^/]+/recipes?/)'
+    # A jar that isn't a readable zip can't be a working mod on any side.
+    try { $zip = [System.IO.Compression.ZipFile]::OpenRead($Path) } catch { return $false }
+    try {
+        foreach ($entry in $zip.Entries) {
+            if ($entry.FullName -match $contentPattern) { return $true }
+            if ($entry.FullName -match '^META-INF/jarjar/.+\.jar$') {
+                $memory = New-Object System.IO.MemoryStream
+                $stream = $entry.Open()
+                try { $stream.CopyTo($memory) } finally { $stream.Dispose() }
+                $inner = New-Object System.IO.Compression.ZipArchive($memory)
+                try {
+                    foreach ($innerEntry in $inner.Entries) { if ($innerEntry.FullName -match $contentPattern) { return $true } }
+                } finally { $inner.Dispose() }
+            }
+        }
+        return $false
+    } finally {
+        $zip.Dispose()
+    }
+}
+
+# The jar a failed start blames for being client-only: the "Mod File:" line
+# that follows an "invalid dist DEDICATED_SERVER" crash, or - when a Mixin
+# failure names only a mod id - the jar in mods\ whose META-INF/mods.toml
+# declares that id. $null when the crash isn't about such a mod or the jar
+# isn't in mods\ (never guesses).
+function Get-RefusedModJar {
     param(
         [Parameter(Mandatory = $true)][string]$InstancePath,
         [AllowEmptyString()][string]$ConsoleText = ""
@@ -393,7 +444,10 @@ function Get-ClientOnlyModJar {
     return $null
 }
 
-# The jar in $Folder whose META-INF/mods.toml declares $ModId, or $null.
+# The jar in $Folder whose META-INF/mods.toml (neoforge.mods.toml on
+# NeoForge 1.20.5+) declares $ModId - or whose MANIFEST.MF names it as its
+# Automatic-Module-Name (how NeoForge stack frames name a service jar,
+# e.g. Sodium's "sodium_service") - or $null.
 # Opening every jar takes a second or two on a big pack (the GUI calls this
 # on the UI thread), so jars whose name looks like the mod id go first.
 function Find-ModJarById {
@@ -409,11 +463,16 @@ function Find-ModJarById {
     foreach ($file in $ordered) {
         try { $zip = [System.IO.Compression.ZipFile]::OpenRead($file.FullName) } catch { continue }
         try {
-            $toml = $zip.GetEntry("META-INF/mods.toml")
-            if (-not $toml) { continue }
-            $reader = New-Object System.IO.StreamReader($toml.Open())
-            try { $text = $reader.ReadToEnd() } finally { $reader.Dispose() }
-            if ($text -match "(?m)^\s*modId\s*=\s*[`"']$([regex]::Escape($ModId))[`"']") { return $file.Name }
+            $toml = $zip.GetEntry("META-INF/neoforge.mods.toml")
+            if (-not $toml) { $toml = $zip.GetEntry("META-INF/mods.toml") }
+            $manifest = $zip.GetEntry("META-INF/MANIFEST.MF")
+            foreach ($entry in @($toml, $manifest)) {
+                if (-not $entry) { continue }
+                $reader = New-Object System.IO.StreamReader($entry.Open())
+                try { $text = $reader.ReadToEnd() } finally { $reader.Dispose() }
+                if ($entry -eq $toml -and $text -match "(?m)^\s*modId\s*=\s*[`"']$([regex]::Escape($ModId))[`"']") { return $file.Name }
+                if ($entry -eq $manifest -and $text -match "(?m)^Automatic-Module-Name:\s*$([regex]::Escape($ModId))\s*$") { return $file.Name }
+            }
         } finally {
             $zip.Dispose()
         }
@@ -428,28 +487,43 @@ function Find-ModJarById {
 # first stack frame whose jar is in mods\ - the code that actually touched
 # the client class. For framework that was Controllable (whose client config
 # Framework was loading), not Framework, a library server mods need.
+# NeoForge can die earlier, with an uncaught 'Exception in thread "main"'
+# whose frames name modules ("at LAYER SERVICE/sodium_service@0.8.13/...")
+# instead of jars - those are looked up by module name.
 function Get-FailedModInstanceJar {
     param(
         [Parameter(Mandatory = $true)][string]$InstancePath,
         [AllowEmptyString()][string]$ConsoleText = ""
     )
     $modsDir = Join-Path $InstancePath "mods"
-    $lines = $ConsoleText -split "\r?\n"
+    # NeoForge can print a stack through log4j, prefixing every line with
+    # "[10:32:24.946] [main/INFO] [STDERR/]: [java.lang.Throwable:...]: ".
+    $lines = ($ConsoleText -split "\r?\n") -replace '^\[[\d:.]+\] \[[^\]]+\] \[STDERR/\]: \[[^\]]+\]: ', ''
     for ($i = 0; $i -lt $lines.Count; $i++) {
-        if ($lines[$i] -notmatch 'Failed to (create mod instance|register automatic subscribers)\. ModID: ([\w-]+)') { continue }
+        if ($lines[$i] -notmatch 'Failed to (create mod instance|register automatic subscribers)\. ModID: ([\w-]+)|Exception in thread "main"') { continue }
         $modId = $Matches[2]
-        $block = @()
-        for ($j = $i + 1; $j -lt $lines.Count -and $lines[$j] -notmatch '^\[\d\d:\d\d:\d\d\]'; $j++) { $block += $lines[$j] }
-        # A client class the server doesn't have, however Java words it.
-        $clientCause = 'invalid dist DEDICATED_SERVER|client ?side only|client-only|(ClassNotFoundException|NoClassDefFoundError|ClassMetadataNotFoundException):? net[./]minecraft[./]client[./]|com[./]mojang[./]blaze3d'
+        $block = @($lines[$i])
+        for ($j = $i + 1; $j -lt $lines.Count -and $lines[$j] -notmatch '^\[\d\d:\d\d:\d\d'; $j++) { $block += $lines[$j] }
+        # A client class the server doesn't have, however Java words it - from
+        # Minecraft, LWJGL, or a mod's client package (e.g. Sodium Extra needing
+        # Sodium's, after Sodium was moved aside).
+        # ponytail: "client" package name is a naming convention, not proof.
+        $clientCause = 'invalid dist DEDICATED_SERVER|client ?side only|client-only|(ClassNotFoundException|NoClassDefFoundError|ClassMetadataNotFoundException):? ([\w$]+[./])*?(client[./]|org[./]lwjgl[./])|com[./]mojang[./]blaze3d'
         if (($block -join "`n") -notmatch $clientCause) { continue }
         foreach ($frame in $block) {
             if ($frame -match '^\s*at .*~\[([^\]%/]+\.jar)' -and (Test-Path -LiteralPath (Join-Path $modsDir $Matches[1]))) { return $Matches[1] }
+            # A NeoForge module frame outside the loader's own MC-BOOTSTRAP layer.
+            if ($frame -match '^\s*at (?!MC-BOOTSTRAP/)[A-Z][A-Z -]*/([\w.]+)@') {
+                $jar = Find-ModJarById -Folder $modsDir -ModId $Matches[1]
+                if ($jar) { return $jar }
+            }
         }
         # No frame in a mod jar (e.g. Oculus: Forge failed while inspecting
         # the mod's own class) - then the mod being built is the culprit.
-        $jar = Find-ModJarById -Folder $modsDir -ModId $modId
-        if ($jar) { return $jar }
+        if ($modId) {
+            $jar = Find-ModJarById -Folder $modsDir -ModId $modId
+            if ($jar) { return $jar }
+        }
     }
     return $null
 }
