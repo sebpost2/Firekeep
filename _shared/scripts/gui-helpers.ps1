@@ -204,7 +204,8 @@ function Get-InvalidDistModFile {
 function Get-StartupFailure {
     param(
         [AllowEmptyString()][string]$ConsoleText = "",
-        [bool]$LauncherExited = $false
+        [bool]$LauncherExited = $false,
+        [string]$InstancePath = ""   # lets the message explain mods that need a moved-aside mod
     )
     $fatal = 'Failed to start the minecraft server|Could not create the Java Virtual Machine|Error occurred during initialization of VM|---- Minecraft Crash Report ----|could not open .*jvm\.cfg|FAILED TO BIND TO PORT'
     if (-not $LauncherExited -and $ConsoleText -notmatch $fatal) { return $null }
@@ -231,11 +232,17 @@ function Get-StartupFailure {
         return "The mod '$($Matches[1])' failed to load on the server - it's probably client-only. Move it out of the server's mods folder and start again."
     }
     $jar = Get-InvalidDistModFile -ConsoleText $ConsoleText
+    if (-not $jar -and $InstancePath) { $jar = Get-FailedModInstanceJar -InstancePath $InstancePath -ConsoleText $ConsoleText }
     if ($jar) {
         return "A mod that only works in the game client stopped the server: $jar. Move that file out of the server's mods folder and start again."
     }
     if ($ConsoleText -match "Mod ID: '([^']+)', Requested by: '([^']+)'") {
-        return "The mod '$($Matches[2])' needs '$($Matches[1])', which isn't in the server's mods folder."
+        $needs = $Matches[1]; $modId = $Matches[2]
+        $dependent = if ($InstancePath) { Get-DependentOfMovedAsideMod -InstancePath $InstancePath -ConsoleText $ConsoleText }
+        if ($dependent) {
+            return "The mod '$($dependent.ModId)' needs '$($dependent.Needs)', which was moved aside because it only works in the game client - so '$($dependent.ModId)' has to be moved aside too."
+        }
+        return "The mod '$modId' needs '$needs', which isn't in the server's mods folder."
     }
     if ($ConsoleText -match 'FAILED TO BIND TO PORT|Address already in use') {
         return "The server's port is already in use - another server or program is using it. Stop that one first."
@@ -352,33 +359,99 @@ function Get-ClientOnlyModJar {
     )
     $modsDir = Join-Path $InstancePath "mods"
     # Same order as Get-StartupFailure: a fatal mixin failure first (it names
-    # the real culprit), then an "invalid dist" failure inside a crash section.
-    if ($ConsoleText -notmatch 'Mixin apply for mod ([\w-]+) failed') {
-        $jar = Get-InvalidDistModFile -ConsoleText $ConsoleText
-        if ($jar -and (Test-Path -LiteralPath (Join-Path $modsDir $jar))) { return $jar }
+    # the real culprit), then an "invalid dist" failure inside a crash
+    # section, then a mod that needs a mod already moved aside.
+    if ($ConsoleText -match 'Mixin apply for mod ([\w-]+) failed') {
+        return Find-ModJarById -Folder $modsDir -ModId $Matches[1]
+    }
+    $jar = Get-InvalidDistModFile -ConsoleText $ConsoleText
+    if ($jar) {
+        if (Test-Path -LiteralPath (Join-Path $modsDir $jar)) { return $jar }
         return $null
     }
-    if ($ConsoleText -match 'Mixin apply for mod ([\w-]+) failed') {
-        $modId = $Matches[1]
-        Add-Type -AssemblyName System.IO.Compression.FileSystem
-        # Opening every jar takes a second or two on a big pack (this runs on
-        # the UI thread), so jars whose name looks like the mod id go first.
-        $jars = @(Get-ChildItem -LiteralPath $modsDir -Filter "*.jar" -File -ErrorAction SilentlyContinue)
-        $key = ($modId -replace '[-_ ]', '')
-        $likely = @($jars | Where-Object { ($_.BaseName -replace '[-_ ]', '') -like "*$key*" })
-        $ordered = $likely + @($jars | Where-Object { $likely -notcontains $_ })
-        foreach ($file in $ordered) {
-            try { $zip = [System.IO.Compression.ZipFile]::OpenRead($file.FullName) } catch { continue }
-            try {
-                $toml = $zip.GetEntry("META-INF/mods.toml")
-                if (-not $toml) { continue }
-                $reader = New-Object System.IO.StreamReader($toml.Open())
-                try { $text = $reader.ReadToEnd() } finally { $reader.Dispose() }
-                if ($text -match "(?m)^\s*modId\s*=\s*[`"']$([regex]::Escape($modId))[`"']") { return $file.Name }
-            } finally {
-                $zip.Dispose()
-            }
+    $jar = Get-FailedModInstanceJar -InstancePath $InstancePath -ConsoleText $ConsoleText
+    if ($jar) { return $jar }
+    $dependent = Get-DependentOfMovedAsideMod -InstancePath $InstancePath -ConsoleText $ConsoleText
+    if ($dependent) { return $dependent.Jar }
+    return $null
+}
+
+# The jar in $Folder whose META-INF/mods.toml declares $ModId, or $null.
+# Opening every jar takes a second or two on a big pack (the GUI calls this
+# on the UI thread), so jars whose name looks like the mod id go first.
+function Find-ModJarById {
+    param(
+        [Parameter(Mandatory = $true)][string]$Folder,
+        [Parameter(Mandatory = $true)][string]$ModId
+    )
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $jars = @(Get-ChildItem -LiteralPath $Folder -Filter "*.jar" -File -ErrorAction SilentlyContinue)
+    $key = ($ModId -replace '[-_ ]', '')
+    $likely = @($jars | Where-Object { ($_.BaseName -replace '[-_ ]', '') -like "*$key*" })
+    $ordered = $likely + @($jars | Where-Object { $likely -notcontains $_ })
+    foreach ($file in $ordered) {
+        try { $zip = [System.IO.Compression.ZipFile]::OpenRead($file.FullName) } catch { continue }
+        try {
+            $toml = $zip.GetEntry("META-INF/mods.toml")
+            if (-not $toml) { continue }
+            $reader = New-Object System.IO.StreamReader($toml.Open())
+            try { $text = $reader.ReadToEnd() } finally { $reader.Dispose() }
+            if ($text -match "(?m)^\s*modId\s*=\s*[`"']$([regex]::Escape($ModId))[`"']") { return $file.Name }
+        } finally {
+            $zip.Dispose()
         }
+    }
+    return $null
+}
+
+# Forge's "Failed to create mod instance. ModID: X" / "Failed to register
+# automatic subscribers. ModID: X" errors (several can pile up in one start,
+# with the crash report only saved to a file, not printed). When that
+# error's own stack shows a client-only cause, the mod to move aside is the
+# first stack frame whose jar is in mods\ - the code that actually touched
+# the client class. For framework that was Controllable (whose client config
+# Framework was loading), not Framework, a library server mods need.
+function Get-FailedModInstanceJar {
+    param(
+        [Parameter(Mandatory = $true)][string]$InstancePath,
+        [AllowEmptyString()][string]$ConsoleText = ""
+    )
+    $modsDir = Join-Path $InstancePath "mods"
+    $lines = $ConsoleText -split "\r?\n"
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        if ($lines[$i] -notmatch 'Failed to (create mod instance|register automatic subscribers)\. ModID: ([\w-]+)') { continue }
+        $modId = $Matches[2]
+        $block = @()
+        for ($j = $i + 1; $j -lt $lines.Count -and $lines[$j] -notmatch '^\[\d\d:\d\d:\d\d\]'; $j++) { $block += $lines[$j] }
+        if (($block -join "`n") -notmatch 'invalid dist DEDICATED_SERVER|client ?side only|client-only') { continue }
+        foreach ($frame in $block) {
+            if ($frame -match '^\s*at .*~\[([^\]%/]+\.jar)' -and (Test-Path -LiteralPath (Join-Path $modsDir $Matches[1]))) { return $Matches[1] }
+        }
+        # No frame in a mod jar (e.g. Oculus: Forge failed while inspecting
+        # the mod's own class) - then the mod being built is the culprit.
+        $jar = Find-ModJarById -Folder $modsDir -ModId $modId
+        if ($jar) { return $jar }
+    }
+    return $null
+}
+
+# A mod the server refused because it requires a mod that was already moved
+# into _excluded\client-only (e.g. tp_shooting needs ShoulderSurfing): it
+# can't load on the server either. Returns { Jar; ModId; Needs } or $null.
+# A dependency that's simply missing (never moved aside) returns $null.
+function Get-DependentOfMovedAsideMod {
+    param(
+        [Parameter(Mandatory = $true)][string]$InstancePath,
+        [AllowEmptyString()][string]$ConsoleText = ""
+    )
+    $aside = Join-Path $InstancePath "_excluded\client-only"
+    if (-not (Test-Path -LiteralPath $aside)) { return $null }
+    foreach ($m in [regex]::Matches($ConsoleText, "Mod ID: '([^']+)', Requested by: '([^']+)'")) {
+        $needs = $m.Groups[1].Value
+        $modId = $m.Groups[2].Value
+        if (-not (Find-ModJarById -Folder $aside -ModId $needs)) { continue }
+        $jar = Find-ModJarById -Folder (Join-Path $InstancePath "mods") -ModId $modId
+        if ($jar) { return [pscustomobject]@{ Jar = $jar; ModId = $modId; Needs = $needs } }
     }
     return $null
 }

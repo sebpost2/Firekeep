@@ -666,3 +666,127 @@ Describe "Move-ModAside" {
         } finally { $lock.Close(); Remove-Item -Recurse -Force $dir }
     }
 }
+
+# Found booting DeceasedCraft: once ShoulderSurfing was moved aside as
+# client-only, the next start failed because tp_shooting requires it. A mod
+# that needs a client-only mod can't load on the server either.
+Describe "Mods that need a mod already moved aside as client-only" {
+
+    Add-Type -AssemblyName System.IO.Compression, System.IO.Compression.FileSystem
+
+    function New-ModJar([string]$Dir, [string]$FileName, [string]$ModId) {
+        New-Item -ItemType Directory -Force -Path $Dir | Out-Null
+        $stream = [System.IO.File]::Open((Join-Path $Dir $FileName), [System.IO.FileMode]::CreateNew)
+        $zip = New-Object System.IO.Compression.ZipArchive($stream, [System.IO.Compression.ZipArchiveMode]::Create)
+        try {
+            $w = New-Object System.IO.StreamWriter($zip.CreateEntry("META-INF/mods.toml").Open())
+            try { $w.Write("modLoader=`"javafml`"`n[[mods]]`nmodId=`"$ModId`"`n") } finally { $w.Dispose() }
+        } finally { $zip.Dispose(); $stream.Dispose() }
+    }
+
+    function New-Instance { $d = Join-Path $env:TEMP ("dependents-" + [Guid]::NewGuid().ToString("N")); New-Item -ItemType Directory -Force -Path (Join-Path $d "mods") | Out-Null; return $d }
+
+    $text = @(
+        "Missing or unsupported mandatory dependencies:",
+        "`tMod ID: 'shouldersurfing', Requested by: 'tp_shooting', Expected range: '[4.0,)'",
+        "Failed to start the minecraft server"
+    ) -join "`n"
+
+    It "offers to move aside a mod whose required mod was moved aside as client-only" {
+        $dir = New-Instance
+        try {
+            New-ModJar (Join-Path $dir "mods") "tp_shooting-forge-1.3.jar" "tp_shooting"
+            New-ModJar (Join-Path $dir "_excluded\client-only") "ShoulderSurfing-Forge-1.20.1-4.15.0.jar" "shouldersurfing"
+            Get-ClientOnlyModJar -InstancePath $dir -ConsoleText $text | Should Be "tp_shooting-forge-1.3.jar"
+            $msg = Get-StartupFailure -ConsoleText $text -InstancePath $dir
+            $msg | Should Match "'tp_shooting'"
+            $msg | Should Match "moved aside"
+        } finally { Remove-Item -Recurse -Force $dir }
+    }
+
+    It "offers nothing when the required mod is simply missing" {
+        $dir = New-Instance
+        try {
+            New-ModJar (Join-Path $dir "mods") "tp_shooting-forge-1.3.jar" "tp_shooting"
+            Get-ClientOnlyModJar -InstancePath $dir -ConsoleText $text | Should Be $null
+            Get-StartupFailure -ConsoleText $text -InstancePath $dir | Should Match "'tp_shooting' needs 'shouldersurfing', which isn't in the server's mods folder"
+        } finally { Remove-Item -Recurse -Force $dir }
+    }
+}
+
+# Found booting DeceasedCraft: Forge collected several "Failed to create mod
+# instance. ModID: X" errors in one start and saved the crash report without
+# printing its sections. The mod to move aside is the first stack frame's
+# jar in mods\ - for framework that's Controllable, whose client config
+# Framework was loading, not Framework (a library server mods need).
+Describe "Client-only mods named by 'Failed to create mod instance' errors" {
+
+    function New-Instance([string[]]$Jars) {
+        $d = Join-Path $env:TEMP ("failedinstance-" + [Guid]::NewGuid().ToString("N"))
+        New-Item -ItemType Directory -Force -Path (Join-Path $d "mods") | Out-Null
+        foreach ($j in $Jars) { Set-Content -LiteralPath (Join-Path $d "mods\$j") -Value "jar" }
+        return $d
+    }
+
+    $frameworkCrash = @(
+        "[20:11:52] [modloading-worker-0/ERROR] [ne.mi.fm.ja.FMLModContainer/LOADING]: Failed to create mod instance. ModID: framework, class com.mrcrayfish.framework.FrameworkForge",
+        "java.lang.BootstrapMethodError: java.lang.RuntimeException: Attempted to load class net/minecraft/client/gui/screens/Screen for invalid dist DEDICATED_SERVER",
+        "`tat cpw.mods.cl.ModuleClassLoader.loadClass(ModuleClassLoader.java:135) ~[securejarhandler-2.1.10.jar:?] {}",
+        "`tat com.mrcrayfish.controllable.client.settings.InputLibrary.<clinit>(InputLibrary.java:14) ~[controllable-forge-1.20.1-0.21.7.jar%23466!/:1.20.1-0.21.7] {re:classloading}",
+        "`tat com.mrcrayfish.framework.FrameworkForge.<init>(FrameworkForge.java:50) ~[framework-forge-1.20.1-0.7.15.jar%23538!/:1.20.1-0.7.15] {re:classloading}",
+        "Caused by: java.lang.RuntimeException: Attempted to load class net/minecraft/client/gui/screens/Screen for invalid dist DEDICATED_SERVER",
+        "[20:11:56] [main/FATAL] [ne.mi.fm.ModLoader/LOADING]: Failed to complete lifecycle event CONSTRUCT, 5 errors found",
+        "[20:11:56] [main/ERROR] [minecraft/Main]: Failed to start the minecraft server"
+    ) -join "`n"
+
+    It "blames the mod whose code touched the client class, not the mod being built" {
+        $dir = New-Instance @("controllable-forge-1.20.1-0.21.7.jar", "framework-forge-1.20.1-0.7.15.jar")
+        try {
+            Get-ClientOnlyModJar -InstancePath $dir -ConsoleText $frameworkCrash | Should Be "controllable-forge-1.20.1-0.21.7.jar"
+            Get-StartupFailure -ConsoleText $frameworkCrash -InstancePath $dir | Should Match "controllable-forge-1\.20\.1-0\.21\.7\.jar"
+        } finally { Remove-Item -Recurse -Force $dir }
+    }
+
+    It "takes a mod that refuses to load on a server at its word" {
+        $text = @(
+            "[20:11:52] [modloading-worker-0/ERROR] [ne.mi.fm.ja.FMLModContainer/LOADING]: Failed to create mod instance. ModID: entity_model_features, class traben.entity_model_features.forge.EMFForge",
+            "java.lang.UnsupportedOperationException: Attempting to load a clientside only mod [EMF] on the server, refusing",
+            "`tat traben.entity_model_features.forge.EMFForge.<init>(EMFForge.java:39) ~[entity_model_features_forge_1.20.1-2.2.jar%23510!/:?] {re:classloading}",
+            "[20:11:56] [main/ERROR] [minecraft/Main]: Failed to start the minecraft server"
+        ) -join "`n"
+        $dir = New-Instance @("entity_model_features_forge_1.20.1-2.2.jar")
+        try { Get-ClientOnlyModJar -InstancePath $dir -ConsoleText $text | Should Be "entity_model_features_forge_1.20.1-2.2.jar" } finally { Remove-Item -Recurse -Force $dir }
+    }
+
+    # Oculus: Forge fails while inspecting the mod's own class, so no stack
+    # frame is in a mod jar - the mod being built is then the culprit.
+    It "falls back to the mod being built when no stack frame is in a mod jar" {
+        Add-Type -AssemblyName System.IO.Compression, System.IO.Compression.FileSystem
+        $dir = New-Instance @()
+        $jarPath = Join-Path $dir "mods\oculus-mc1.20.1-1.8.0.jar"
+        $stream = [System.IO.File]::Open($jarPath, [System.IO.FileMode]::CreateNew)
+        $zip = New-Object System.IO.Compression.ZipArchive($stream, [System.IO.Compression.ZipArchiveMode]::Create)
+        $w = New-Object System.IO.StreamWriter($zip.CreateEntry("META-INF/mods.toml").Open())
+        $w.Write("[[mods]]`nmodId=`"oculus`"`n"); $w.Dispose(); $zip.Dispose(); $stream.Dispose()
+        $text = @(
+            "[20:11:52] [modloading-worker-0/ERROR] [ne.mi.fm.ja.FMLModContainer/LOADING]: Failed to create mod instance. ModID: oculus, class net.irisshaders.iris.Iris",
+            "java.lang.RuntimeException: Attempted to load class net/minecraft/client/gui/screens/Screen for invalid dist DEDICATED_SERVER",
+            "`tat cpw.mods.cl.ModuleClassLoader.loadClass(ModuleClassLoader.java:135) ~[securejarhandler-2.1.10.jar:?] {}",
+            "`tat java.lang.Class.getDeclaredConstructors0(Native Method) ~[?:?] {re:mixin}",
+            "`tat net.minecraftforge.fml.javafmlmod.FMLModContainer.constructMod(FMLModContainer.java:73) ~[javafmllanguage-1.20.1-47.4.0.jar%23716!/:?] {}",
+            "[20:11:52] [modloading-worker-0/INFO] [in.in.InsaneLib/]: Found (COMMON) InsaneLib Feature class x"
+        ) -join "`n"
+        try { Get-ClientOnlyModJar -InstancePath $dir -ConsoleText $text | Should Be "oculus-mc1.20.1-1.8.0.jar" } finally { Remove-Item -Recurse -Force $dir }
+    }
+
+    It "ignores a failed mod whose error isn't about the client" {
+        $text = @(
+            "[20:11:52] [modloading-worker-0/ERROR] [ne.mi.fm.ja.FMLModContainer/LOADING]: Failed to create mod instance. ModID: brokenmod, class a.b.C",
+            "java.lang.NullPointerException: config was null",
+            "`tat a.b.C.<init>(C.java:10) ~[brokenmod-1.0.jar%23100!/:?] {}",
+            "[20:11:56] [main/ERROR] [minecraft/Main]: Failed to start the minecraft server"
+        ) -join "`n"
+        $dir = New-Instance @("brokenmod-1.0.jar")
+        try { Get-ClientOnlyModJar -InstancePath $dir -ConsoleText $text | Should Be $null } finally { Remove-Item -Recurse -Force $dir }
+    }
+}

@@ -1270,7 +1270,7 @@ function Watch-ServerStartup {
     if (-not $exited -and -not (Get-StartupFailure -ConsoleText $newText)) { return }
 
     $fullText = if ($fresh) { (Get-LogTailChunk -Path $logPath -Offset 0).Text } else { "" }
-    $message = Get-StartupFailure -ConsoleText $fullText -LauncherExited $true
+    $message = Get-StartupFailure -ConsoleText $fullText -LauncherExited $true -InstancePath $script:selected.Path
     if (-not $exited) { Stop-ProcessTree -ProcessId $script:launchedProcess.Id }
 
     $crash = Get-ChildItem -Path (Join-Path $script:selected.Path "crash-reports") -Filter "*.txt" -ErrorAction SilentlyContinue |
