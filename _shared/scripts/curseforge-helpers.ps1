@@ -328,7 +328,12 @@ function Invoke-ParallelDownload {
         $definition = (Get-Command $name -CommandType Function).Definition
         $state.Commands.Add((New-Object System.Management.Automation.Runspaces.SessionStateFunctionEntry($name, $definition)))
     }
-    $pool = [runspacefactory]::CreateRunspacePool(1, $Throttle, $state, $Host)
+    # No $Host here: sharing a background job's host with the workers makes
+    # the job drop this function's Write-Progress, which the Add Server
+    # screen reads to show "Downloading mods: N of M".
+    $pool = [runspacefactory]::CreateRunspacePool($state)
+    $pool.SetMinRunspaces(1) | Out-Null
+    $pool.SetMaxRunspaces($Throttle) | Out-Null
     $pool.Open()
 
     $wrapper = {

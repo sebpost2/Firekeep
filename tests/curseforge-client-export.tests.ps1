@@ -505,3 +505,22 @@ Describe "Install-ForgeServer" {
         } finally { Stop-FakeCurseForge $fake; Remove-Item -Recurse -Force $dest }
     }
 }
+
+# The Add Server screen shows import progress by reading the background
+# job's progress records ($job.ChildJobs[0].Progress). Handing the job's
+# $Host to the worker runspaces made the job drop them, so the GUI showed
+# nothing during a 1 GB download.
+Describe "Invoke-ParallelDownload progress inside a background job" {
+    It "reports progress the Add Server screen can read" {
+        $helpers = Join-Path (Split-Path -Parent $PSScriptRoot) "_shared\scripts\curseforge-helpers.ps1"
+        $job = Start-Job -ArgumentList $helpers -ScriptBlock {
+            param($helpers)
+            . $helpers
+            $null = Invoke-ParallelDownload -Items (1..4) -Throttle 2 -Activity "Downloading mods" -Work { param($i) Start-Sleep -Milliseconds 400; $i }
+        }
+        try {
+            Wait-Job $job -Timeout 120 | Out-Null
+            @($job.ChildJobs[0].Progress | Where-Object { $_.Activity -eq "Downloading mods" -and $_.RecordType -ne "Completed" }).Count | Should BeGreaterThan 0
+        } finally { Remove-Job $job -Force }
+    }
+}
