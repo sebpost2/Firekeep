@@ -164,6 +164,27 @@ Describe "Get-ScreenSize" {
     }
 }
 
+Describe "Get-ScreenResizeTarget" {
+
+    It "sizes the first screen shown" {
+        $s = Get-ScreenResizeTarget -Screen "Home" -CurrentWidth 640 -CurrentHeight 860 -LastApplied $null
+        $s.Width | Should Be 640
+        $s.Height | Should Be 860
+    }
+
+    It "gives Home its full size back after Add Server shrank the window" {
+        $applied = Get-ScreenSize -Screen "AddServer"
+        $s = Get-ScreenResizeTarget -Screen "Home" -CurrentWidth 480 -CurrentHeight 580 -LastApplied $applied
+        $s.Width | Should Be 640
+        $s.Height | Should Be 860
+    }
+
+    It "keeps a size the user dragged the window to" {
+        $applied = Get-ScreenSize -Screen "Home"
+        Get-ScreenResizeTarget -Screen "AddServer" -CurrentWidth 900 -CurrentHeight 1000 -LastApplied $applied | Should BeNullOrEmpty
+    }
+}
+
 Describe "Get-BackTarget" {
 
     It "returns null for Home, since it's the root screen with no back arrow" {

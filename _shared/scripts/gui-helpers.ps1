@@ -94,6 +94,22 @@ function Get-ScreenSize {
     }
 }
 
+# The size to give the window when switching to $Screen, or $null to leave
+# it alone. A window that no longer matches the size Firekeep last gave it
+# was resized by the user, and that size is kept. Otherwise each screen gets
+# its own size - Home must not stay at Add Server's smaller one, which hides
+# the hint and buttons below the START button.
+function Get-ScreenResizeTarget {
+    param(
+        [Parameter(Mandatory = $true)][string]$Screen,
+        [Parameter(Mandatory = $true)][double]$CurrentWidth,
+        [Parameter(Mandatory = $true)][double]$CurrentHeight,
+        $LastApplied
+    )
+    if ($LastApplied -and ($CurrentWidth -ne $LastApplied.Width -or $CurrentHeight -ne $LastApplied.Height)) { return $null }
+    return Get-ScreenSize -Screen $Screen
+}
+
 # Where the back arrow on a screen returns to. Flat two-level navigation -
 # Home is the root and has no back target; everything else returns to Home.
 function Get-BackTarget {

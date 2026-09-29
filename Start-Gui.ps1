@@ -69,18 +69,18 @@ $overlay = @{
 }
 
 $script:currentScreen = "Home"
-$script:sizedScreens = @{}
+$script:appliedSize = $null   # the size Show-Screen last gave the window
 function Show-Screen([string]$Screen) {
     $homeHost.Visibility = if ($Screen -eq "Home") { "Visible" } else { "Collapsed" }
     $mapsHost.Visibility = if ($Screen -eq "ManageMaps") { "Visible" } else { "Collapsed" }
     $addHost.Visibility = if ($Screen -eq "AddServer") { "Visible" } else { "Collapsed" }
     $consoleHost.Visibility = if ($Screen -eq "Console") { "Visible" } else { "Collapsed" }
     $settingsHost.Visibility = if ($Screen -eq "ServerSettings") { "Visible" } else { "Collapsed" }
-    if (-not $script:sizedScreens[$Screen]) {
-        $size = Get-ScreenSize -Screen $Screen
+    $size = Get-ScreenResizeTarget -Screen $Screen -CurrentWidth $window.Width -CurrentHeight $window.Height -LastApplied $script:appliedSize
+    if ($size) {
         $window.Width = $size.Width
         $window.Height = $size.Height
-        $script:sizedScreens[$Screen] = $true
+        $script:appliedSize = $size
     }
     $script:currentScreen = $Screen
 }
@@ -324,7 +324,8 @@ $actionButton.Add_Click({
         if ($lock) { Remove-Item -Path (Join-Path $script:selected.Path ".starting.lock") -Force -ErrorAction SilentlyContinue }
         $missingMods = @(Get-MissingModDownloads -InstancePath $script:selected.Path)
         if ($missingMods.Count -gt 0) {
-            $script:startupFailureText = "$($missingMods.Count) mods still need a manual download before this server can start. Click Show missing mods."
+            $script:startupFailureText = if ($missingMods.Count -eq 1) { "1 mod still needs a manual download before this server can start. Click Show missing mods." }
+                                         else { "$($missingMods.Count) mods still need a manual download before this server can start. Click Show missing mods." }
             $homeHintText.Text = $script:startupFailureText
             return
         }
@@ -831,7 +832,7 @@ function Update-ModpackDropZoneDisplay {
     $dropZoneEmptyState.Visibility = "Collapsed"
     $dropZoneFilledState.Visibility = "Visible"
     $dropZoneFileName.Text = Split-Path -Path $path -Leaf
-    $dropZoneFileType.Text = if ($path -match '\.zip(\?.*)?$') { "CurseForge Server Files" }
+    $dropZoneFileType.Text = if ($path -match '\.zip(\?.*)?$') { "CurseForge modpack" }
                               elseif ($path -match '\.mrpack(\?.*)?$') { "Modrinth modpack" }
                               else { "Modpack link" }
 }
@@ -1004,7 +1005,7 @@ $addJobTimer.Add_Tick({
         Refresh-ServerList -PreferName $createdName
         $missingMods = @(Get-MissingModDownloads -InstancePath $script:selected.Path)
         if ($missingMods.Count -gt 0) {
-            $script:startupFailureText = "Created - but $($missingMods.Count) mods couldn't be downloaded automatically. Click Show missing mods."
+            $script:startupFailureText = "Created - but $($missingMods.Count) $(if ($missingMods.Count -eq 1) { 'mod' } else { 'mods' }) couldn't be downloaded automatically. Click Show missing mods."
         }
         Update-AddressDisplay
         Show-Screen "Home"
