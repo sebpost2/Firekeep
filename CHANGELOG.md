@@ -3,6 +3,18 @@
 All notable changes to this project are documented here. Loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.2.1] - 2026-09-29
+
+### Fixed
+- After creating a server, Home kept the smaller Add Server window size,
+  so the "Created - but..." message and **Show missing mods** were hidden
+  below the START button. Each screen gets its own size again; a size you
+  drag the window to is still kept.
+- The Add Server drop zone called every .zip "CurseForge Server Files",
+  even regular CurseForge modpack downloads. It now says "CurseForge
+  modpack".
+- "1 mods" now reads "1 mod" in the missing-mod messages.
+
 ## [1.2.0] - 2026-09-28
 
 ### Added
