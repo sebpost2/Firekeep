@@ -287,6 +287,7 @@ function Get-PastTemplateStartHashes {
         "df7ee009698997d3f7cbee6492b04a4ad45548a72be9030b57d5845c1de63b1d"  # 58a31e8 GC flags
         "c7fc6ba1cdad735cd0f566fb6468cc3adf4f96ef8a1342566c355d9932635ad6"  # b95fa5d backups
         "8529e1bdb60d5785d879eda53019aa948bf12fdd0bcd61afd6cf8a8949f715f3"  # 955b455 console capture
+        "7842d97ccbb6d3ac62785ca7e98ae59a23d750dbf836b81eeaa0a0e80fa3fb55"  # ffdd812 Java failure capture
     )
 }
 

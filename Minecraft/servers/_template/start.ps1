@@ -54,7 +54,7 @@ if (-not $eulaContent -or $eulaContent -notmatch "eula\s*=\s*true") {
 
 # The app tracks and stops servers over RCON; servers built by hand may not
 # have it on yet.
-Set-RconDefaults -PropsPath (Join-Path $PSScriptRoot "server.properties")
+Set-ServerRcon -InstancePath $PSScriptRoot
 
 # Once a day, before the world is opened. A failed backup never blocks play.
 try {

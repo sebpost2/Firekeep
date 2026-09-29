@@ -45,6 +45,23 @@ function Set-RconDefaults {
     }
 }
 
+# Set-RconDefaults for a server folder, plus the same RCON settings in
+# default-server.properties when the pack ships one: mods like "Default
+# Server Properties" replace server.properties with that file at startup,
+# which otherwise turns RCON off - and Firekeep then shows the running
+# server as stopped and can't stop it.
+function Set-ServerRcon {
+    param([Parameter(Mandatory = $true)][string]$InstancePath)
+    $props = Join-Path $InstancePath "server.properties"
+    Set-RconDefaults -PropsPath $props
+    $defaults = Join-Path $InstancePath "default-server.properties"
+    if (Test-Path -LiteralPath $defaults) {
+        foreach ($key in "enable-rcon", "rcon.port", "rcon.password") {
+            Set-ServerProperty $defaults $key (Get-ServerProperty $props $key)
+        }
+    }
+}
+
 # Copies the generic _template into a new named instance and pre-seeds
 # server.properties with RCON (Set-RconDefaults), so "Stop Server" works
 # cleanly from the very first start.

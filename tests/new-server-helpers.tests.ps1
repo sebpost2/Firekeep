@@ -101,3 +101,39 @@ Describe "Set-RconDefaults" {
         Remove-Item $path, "$path.bak" -ErrorAction SilentlyContinue
     }
 }
+
+# Found booting a real DeceasedCraft import: its "Default Server Properties"
+# mod replaces server.properties with the pack's default-server.properties at
+# startup ("Replacing server properties with default properties!"), which
+# turned RCON off - so Firekeep showed the running server as stopped.
+Describe "Set-ServerRcon" {
+
+    . (Join-Path (Split-Path -Parent $PSScriptRoot) "_shared\scripts\rcon.ps1")   # Read-ServerProperties
+
+    function New-Instance { $d = Join-Path $env:TEMP ("server-rcon-" + [Guid]::NewGuid().ToString("N")); New-Item -ItemType Directory -Path $d | Out-Null; return $d }
+
+    It "puts the same RCON settings into default-server.properties when the pack has one" {
+        $dir = New-Instance
+        try {
+            Set-Content -Path (Join-Path $dir "server.properties") -Value "motd=Hi" -Encoding ascii
+            Set-Content -Path (Join-Path $dir "default-server.properties") -Value @("allow-nether=false", "difficulty=normal") -Encoding ascii
+            Set-ServerRcon -InstancePath $dir
+            $server = Read-ServerProperties (Join-Path $dir "server.properties")
+            $defaults = Read-ServerProperties (Join-Path $dir "default-server.properties")
+            $server["enable-rcon"] | Should Be "true"
+            $defaults["enable-rcon"] | Should Be "true"
+            $defaults["rcon.port"] | Should Be $server["rcon.port"]
+            $defaults["rcon.password"] | Should Be $server["rcon.password"]
+            $defaults["difficulty"] | Should Be "normal"
+        } finally { Remove-Item -Recurse -Force $dir }
+    }
+
+    It "doesn't create a default-server.properties the pack didn't have" {
+        $dir = New-Instance
+        try {
+            Set-ServerRcon -InstancePath $dir
+            Test-Path (Join-Path $dir "default-server.properties") | Should Be $false
+            (Read-ServerProperties (Join-Path $dir "server.properties"))["enable-rcon"] | Should Be "true"
+        } finally { Remove-Item -Recurse -Force $dir }
+    }
+}

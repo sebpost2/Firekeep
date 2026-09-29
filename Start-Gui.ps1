@@ -946,7 +946,7 @@ $createButton.Add_Click({
                         $javaVersion = Install-CurseForgeServerZip -ZipPath $localFile -DestPath $dest
                     }
                     # The pack may ship its own server.properties over ours.
-                    Set-RconDefaults -PropsPath (Join-Path $dest "server.properties")
+                    Set-ServerRcon -InstancePath $dest
                     if ($javaVersion) {
                         Set-RunConfigJavaAndRam -Path (Join-Path $dest "run.config.ps1") -JavaVersion $javaVersion -MaxRam $MaxRam
                     }
